@@ -1,0 +1,13 @@
+# 小规模纳税人自主税务填报系统 · 依赖（Python 3.11+）
+streamlit>=1.57,<2
+pandas>=2.0
+openpyxl>=3.1
+python-dotenv>=1.0
+requests>=2.31
+plotly>=5.20
+pillow>=10.0
+pytest>=8.0
+
+# 可选：本地 OCR（系统默认使用 macOS Vision / 手动粘贴文本，无需安装以下依赖）
+# pytesseract>=0.3.10
+# paddleocr>=2.7.0

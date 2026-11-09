@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+
+# 本地密钥与用户数据（不进入版本库）
+.env
+data/user_settings.json
+data/uploads/
+data/backups/
+exports/
+logs/*.csv
+
+# OCR 编译产物
+ocr/bin/
