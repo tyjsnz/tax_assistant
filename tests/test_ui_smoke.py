@@ -1,0 +1,142 @@
+"""UI 冒烟测试：入口渲染、逐页切换与关键交互不崩溃。
+
+约束（与 docs/CONTRACTS.md 第 6 节一致）：
+* 使用 ``streamlit.testing.v1.AppTest`` 在进程内运行真实入口脚本；
+* 测试环境无 DeepSeek API Key、台账初始为空，页面不得崩溃；
+* 页面级兜底会把异常转成 ``st.error``，因此除断言无异常外，还要断言不出现页面错误提示。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from streamlit.testing.v1 import AppTest
+
+APP_PATH = str(Path(__file__).resolve().parents[1] / "ui" / "streamlit_app.py")
+
+PAGES = [
+    "🏠 首页驾驶舱",
+    "📒 台账管理",
+    "🧮 算税工作台",
+    "📋 申报填报",
+    "🔍 申报核对",
+    "📚 政策知识库",
+    "🤖 AI 助手",
+    "⚙️ 设置",
+]
+
+TIMEOUT = 180
+
+
+def _new_app() -> AppTest:
+    """创建并首次运行应用。"""
+    at = AppTest.from_file(APP_PATH, default_timeout=TIMEOUT)
+    at.run()
+    return at
+
+
+def _assert_clean(at: AppTest, context: str = "") -> None:
+    """断言：无未捕获异常、无页面级错误提示。"""
+    exceptions = [f"{item.type}: {item.value}" for item in at.exception]
+    errors = [item.value for item in at.error]
+    assert not exceptions, f"{context} 出现未捕获异常：{exceptions}"
+    assert not errors, f"{context} 出现页面错误提示：{errors}"
+
+
+def test_app_renders() -> None:
+    """入口脚本可以正常渲染，侧边栏包含全部 8 个页面。"""
+    at = _new_app()
+    _assert_clean(at, "首页")
+    radio = at.radio(key="nav")
+    assert radio is not None
+    assert list(radio.options) == PAGES
+
+
+def test_switch_all_pages() -> None:
+    """逐个切换侧边栏页面，均不出现异常或页面级错误。"""
+    at = _new_app()
+    for page in PAGES:
+        at.radio(key="nav").set_value(page).run()
+        _assert_clean(at, page)
+
+
+def test_calculator_shows_disclaimer_and_results() -> None:
+    """算税工作台：输入金额后出结果，且结果下方有免责声明。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("🧮 算税工作台").run()
+    _assert_clean(at, "算税工作台")
+
+    at.number_input(key="calc_vat_total").set_value(20600.0).run()
+    _assert_clean(at, "算税工作台（输入金额后）")
+    metric_values = [metric.value for metric in at.metric]
+    assert any("¥" in str(value) for value in metric_values), "应展示带 ¥ 的算税指标"
+    html_text = "\n".join(element.value for element in at.html)
+    assert "仅供参考" in html_text, "算税结果下方必须展示免责声明"
+
+
+def test_ledger_page_has_four_tabs_and_editor() -> None:
+    """台账管理：四个 tab 均在，空数据时有友好空态。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("📒 台账管理").run()
+    _assert_clean(at, "台账管理")
+    labels = [tab.label for tab in at.tabs]
+    assert any("收入" in label for label in labels)
+    assert any("费用" in label for label in labels)
+    assert any("研发" in label for label in labels)
+    assert any("合同" in label for label in labels)
+    # 空数据时页面展示「加载示例数据」按钮
+    seed_buttons = [button for button in at.button if "示例数据" in button.label]
+    assert seed_buttons, "空数据时必须提供「加载示例数据」按钮"
+
+
+def test_load_demo_data_from_dashboard() -> None:
+    """点击「加载示例数据」后页面不崩溃，并出现台账数据。"""
+    pytest.importorskip("ledger.seed")
+    at = _new_app()
+    seed_buttons = [button for button in at.button if "示例数据" in button.label]
+    assert seed_buttons, "首页空态应提供加载示例数据按钮"
+    seed_buttons[0].click().run()
+    _assert_clean(at, "加载示例数据后")
+
+    at.radio(key="nav").set_value("📒 台账管理").run()
+    _assert_clean(at, "加载示例数据后进入台账管理")
+    assert at.data_editor, "加载示例数据后台账页应展示可编辑表格"
+
+
+def test_filing_generate_bundle() -> None:
+    """申报填报：生成申报表后逐表展示且无错误（依赖 filing.registry）。"""
+    pytest.importorskip("filing.registry")
+    at = _new_app()
+    at.radio(key="nav").set_value("📋 申报填报").run()
+    _assert_clean(at, "申报填报")
+    generate = [button for button in at.button if "生成申报表" in button.label]
+    assert generate, "申报填报页应有「生成申报表」按钮"
+    generate[0].click().run()
+    _assert_clean(at, "生成申报表后")
+    assert at.expander, "生成后应逐表展示申报表 expander"
+
+
+def test_assistant_offline_reply() -> None:
+    """AI 助手：无 API Key 时给出离线模式提示，发送消息不崩溃。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("🤖 AI 助手").run()
+    _assert_clean(at, "AI 助手")
+    infos = "\n".join(item.value for item in at.info)
+    assert "离线模式" in infos, "无 API Key 时应提示离线模式"
+    assert at.chat_input, "AI 助手页应有对话输入框"
+    at.chat_input[0].set_value("这个季度开了 8 万普票，增值税怎么算？").run()
+    _assert_clean(at, "AI 助手发送消息后")
+
+
+def test_settings_masks_api_key() -> None:
+    """设置页：展示脱敏状态，且 API Key 通过密码输入框填写。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("⚙️ 设置").run()
+    _assert_clean(at, "设置")
+    captions = "\n".join(item.value for item in at.caption)
+    assert "未配置" in captions or "已配置" in captions
+    api_input = at.text_input(key="settings_api_key_value")
+    assert api_input is not None, "设置页应提供 API Key 输入框"
+    assert api_input.value == "", "API Key 输入框不应回显明文"
+    assert not at.error

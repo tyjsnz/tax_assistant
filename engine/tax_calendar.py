@@ -251,13 +251,21 @@ def next_deadline(today: date | str | None = None) -> dict[str, Any] | None:
     return items[0] if items else None
 
 
-def reminders(today: date | str | None = None, lookahead_days: int = 30) -> list[dict[str, Any]]:
-    """命中提醒日的申报事项（用于首页 / 提醒推送）。"""
+def reminders(
+    today: date | str | None = None,
+    lookahead_days: int = 30,
+    alert_window_days: int = 15,
+) -> list[dict[str, Any]]:
+    """命中提醒窗口的申报事项（用于首页 / 提醒推送）。
+
+    命中规则：剩余天数在配置的 ``remind_days`` 内，或进入 ``alert_window_days`` 天的
+    提醒窗口（默认 15 天，覆盖月度申报的常见提醒节奏）。
+    """
     now = _as_date(today)
     hits: list[dict[str, Any]] = []
     for item in upcoming_deadlines(now, lookahead_days=lookahead_days):
         remind_days = set(int(day) for day in item.get("remind_days", []))
-        if item["days_left"] in remind_days or item["days_left"] <= 3:
+        if item["days_left"] in remind_days or item["days_left"] <= alert_window_days:
             hits.append(item)
     return hits
 
@@ -287,5 +295,6 @@ def completion_checklist(period: str) -> list[dict[str, Any]]:
         {"item": "企业所得税季度预缴申报", "form_id": "CIT_PREPAY", "required": True, "note": "按本年累计利润额预缴"},
         {"item": "财务报表报送（资产负债表、利润表）", "form_id": "FIN_REPORT", "required": True, "note": "与申报数据保持一致"},
         {"item": "印花税申报", "form_id": "STAMP_QUARTERLY", "required": False, "note": "有应税合同或减免类型时申报"},
-        {"item": "个人所得税扣缴申报", "form_id": "IIT_MONTHLY", "required": False, "note": "月度申报，随季度一并核对"},
+        {"item": "个人所得税扣缴申报", "form_id": "IIT_MONTHLY", "required": False, "external": True,
+         "note": "在自然人电子税务局（扣缴端）按月申报，本系统提供工资总额数据参考，不代生成申报表"},
     ]

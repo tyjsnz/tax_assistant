@@ -25,8 +25,8 @@ import ledger  # noqa: E402
 from ledger import store  # noqa: E402
 
 
-def pytest_configure(config_obj):
-    config_obj.addinivalue_line("markers", "live: 需要真实 DeepSeek API Key 的联网测试")
+def pytest_configure(config):  # noqa: A002  — pytest 钩子要求参数名必须为 config
+    config.addinivalue_line("markers", "live: 需要真实 DeepSeek API Key 的联网测试")
 
 
 @pytest.fixture(scope="session", autouse=True)

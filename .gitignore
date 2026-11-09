@@ -14,3 +14,6 @@ logs/*.csv
 
 # OCR 编译产物
 ocr/bin/
+
+# Swift 编译缓存
+.cache/

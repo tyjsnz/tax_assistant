@@ -126,7 +126,9 @@ def calc_vat(
     total_tax = (vat_payable + surtax).quantize(Decimal("0.01"))
 
     # ---- 解释文本 -----------------------------------------------------------
-    if within_limit and vat_payable == 0:
+    if total_inclusive == 0:
+        note = "本期无销售额，可进行增值税零申报（零申报也需按期提交）。"
+    elif within_limit and vat_payable == 0:
         note = (
             f"{basis_label}不含税 {yuan(exempt_sales)} 元 ≤ 免税额度 {yuan(limit)} 元，"
             f"免征增值税 {yuan(vat_exempt)} 元，附加税费同步免征。"
@@ -137,16 +139,11 @@ def calc_vat(
             f"其中专票不含税 {yuan(special_exclusive)} 元不免税，应缴增值税 {yuan(vat_payable)} 元，"
             f"普票+未开票部分免征增值税 {yuan(vat_exempt)} 元。"
         )
-    elif total_inclusive == 0:
-        note = "本期无销售额，可进行增值税零申报（零申报也需按期提交）。"
     else:
         note = (
             f"{basis_label}不含税 {yuan(basis_amount)} 元 > 免税额度 {yuan(limit)} 元，"
             f"不再享受免税，全部销售额按 {pct(levy)} 征收率缴纳增值税 {yuan(vat_payable)} 元。"
         )
-
-    if total_inclusive == 0:
-        pass  # 零申报场景无需额外告警
 
     return {
         # ---- 规范文档要求的字段 ----

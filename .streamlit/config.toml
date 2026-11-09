@@ -1,0 +1,59 @@
+# 税小智 · Streamlit 主题与服务器配置
+# 设计基调：专业克制的「税务蓝」，浅灰白底 + 纯白卡片 + 深蓝主色，中文优先字体。
+
+[theme]
+base = "light"
+# 主色：税务蓝（按钮、链接、选中态）
+primaryColor = "#1E5AA8"
+# 页面底色：浅灰白，卡片为纯白
+backgroundColor = "#F7F9FC"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1D2129"
+borderColor = "#E3E9F2"
+linkColor = "#165DFF"
+# 中文优先字体栈（PingFang / 微软雅黑 / 思源黑体）
+font = "PingFang SC, Microsoft YaHei, Source Han Sans SC, Noto Sans CJK SC, sans-serif"
+codeFont = "SFMono-Regular, Menlo, Consolas, monospace"
+baseRadius = "medium"
+showWidgetBorder = true
+# 顶部留白收紧一点，更接近专业后台
+paddingTop = "2.25rem"
+paddingBottom = "2rem"
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+# 指标卡数字适当缩小，避免 ¥841,584.14 这类金额被截断
+metricValueFontSize = "1.75rem"
+metricValueFontWeight = 700
+# 图表 / 表格品牌色（十色，税务蓝为主，辅以中性色）
+chartCategoricalColors = [
+  "#1E5AA8",
+  "#3B82C4",
+  "#6FA8DC",
+  "#2E8B57",
+  "#E8A33D",
+  "#D9534F",
+  "#7E6BC4",
+  "#4FB3B3",
+  "#A8B8CC",
+  "#8C6E4A",
+]
+dataframeHeaderBackgroundColor = "#F2F6FC"
+dataframeBorderColor = "#E3E9F2"
+
+[theme.sidebar]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#EEF3FA"
+borderColor = "#E3E9F2"
+textColor = "#1D2129"
+
+[server]
+headless = true
+port = 8501
+fileWatcherType = "auto"
+maxUploadSize = 20
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = true

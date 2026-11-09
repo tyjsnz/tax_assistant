@@ -1,0 +1,701 @@
+"""📋 申报填报（核心页面）。
+
+流程：选择期间 → 生成全部申报表 → 逐表展示栏次与校验结果 → 导出 Excel 申报包 →
+保存草稿 / 标记已确认 / 标记已申报 → 进度条与完成清单 → 填报指引。
+
+所有申报表数据来自 ``filing.registry.build_all(period)``，本页面不重算税额。
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Sequence
+
+import pandas as pd
+import streamlit as st
+
+import config
+import ledger
+from engine import completion_checklist, current_quarter, format_date_cn, period_label, quarter_options
+from ui.components import cache, formatting as F, runtime, theme, ui
+
+FLASH_KEY = "_filing_flash"
+STATE_BUNDLES = "filing_bundles"
+STATE_CHECKS = "filing_checks"
+
+TOTAL_LABELS = {
+    # 增值税
+    "vat_payable": "应缴增值税",
+    "vat_exempt": "免征增值税",
+    "vat_at_standard": "按3%征收率应纳税额",
+    "vat_reduction": "应纳税额减征额",
+    "surtax": "附加税费合计",
+    "surtax_city": "城建税",
+    "surtax_education": "教育费附加",
+    "surtax_local_education": "地方教育附加",
+    "total_tax": "合计税费",
+    "total_inclusive": "含税销售额",
+    "total_exclusive": "不含税销售额",
+    "special_inclusive": "专票含税销售额",
+    "special_exclusive": "专票不含税销售额",
+    "ordinary_inclusive": "普票+未开票含税销售额",
+    "ordinary_exclusive": "普票+未开票不含税销售额",
+    "taxable_sales": "应征增值税销售额",
+    "exempt_sales": "免税销售额",
+    "line_18": "第18栏 应纳税额",
+    "line_22": "第22栏 减征额",
+    "line_24": "第24栏 应补（退）税额",
+    # 企业所得税
+    "prepay_payable": "本期应补（退）",
+    "cit_accrued": "本期应纳所得税额",
+    "cit_paid": "本年累计已预缴",
+    "standard_tax": "按25%计算的税额",
+    "tax_reduction": "减免所得税额",
+    "rd_deduction": "研发加计扣除",
+    "taxable_income": "应纳税所得额",
+    "quarter_profit": "本季利润总额",
+    "ytd_profit": "本年累计利润",
+    "quarter_income_exclusive": "本季不含税收入",
+    "quarter_expense": "本季费用",
+    "effective_rate": "实际税负率",
+    "standard_rate": "法定税率",
+    "revenue": "营业收入",
+    "cost": "营业成本",
+    "profit": "利润总额",
+    # 财务报表
+    "net_profit": "净利润",
+    "revenue_ytd": "营业收入（本年累计）",
+    "profit_ytd": "利润总额（本年累计）",
+    "net_profit_ytd": "净利润（本年累计）",
+    "income_tax_ytd": "所得税费用（本年累计）",
+    "total_assets": "资产总计",
+    "total_liabilities": "负债合计",
+    "total_equity": "所有者权益合计",
+    "cash": "货币资金",
+    # 印花税
+    "total_payable": "应缴合计",
+    "total_amount": "计税金额合计",
+    "total_before_discount": "减免前税额",
+    "discount_amount": "减免税额",
+    "contract_count": "合同份数",
+    "discount_ratio": "减免比例",
+    "total_income": "收入合计",
+    "total_expense": "费用合计",
+}
+
+#: 指标卡优先展示的字段（存在时优先）
+TOTAL_PRIORITY = [
+    "prepay_payable",
+    "total_payable",
+    "total_tax",
+    "vat_payable",
+    "surtax",
+    "taxable_income",
+    "profit",
+    "net_profit",
+    "total_amount",
+    "revenue",
+]
+
+PERCENT_KEYS = {"effective_rate", "standard_rate", "discount_ratio"}
+COUNT_KEYS = {"contract_count"}
+SKIP_KEYS = {"estimate_note", "rates", "within_exemption_limit", "small_scale", "qualifies_small_low_profit"}
+
+
+# =============================================================================
+# 提示消息
+# =============================================================================
+def _flash(message: str, level: str = "success") -> None:
+    st.session_state.setdefault(FLASH_KEY, []).append({"message": message, "level": level})
+
+
+def _show_flash() -> None:
+    for item in st.session_state.pop(FLASH_KEY, []) or []:
+        if item["level"] == "error":
+            st.error(item["message"])
+        elif item["level"] == "warning":
+            st.warning(item["message"])
+        else:
+            st.success(item["message"])
+
+
+# =============================================================================
+# filing 模块访问（含降级）
+# =============================================================================
+def _modules() -> dict[str, Any]:
+    return {
+        "registry": runtime.load("filing.registry"),
+        "validator": runtime.load("filing.validator"),
+        "export": runtime.load("filing.export"),
+        "progress": runtime.load("filing.progress"),
+        "guide": runtime.load("filing.guide"),
+    }
+
+
+def _fallback_save(bundle: dict, status: str) -> dict:
+    """``filing.progress`` 未就绪时，直接 upsert 到 filings 表。"""
+    table = ledger.table("filings")
+    period = bundle.get("period") or current_quarter()
+    form_id = bundle.get("form_id") or ""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for row in table.read():
+        if str(row.get("period")) == str(period) and str(row.get("form_id")) == str(form_id):
+            return table.update(
+                row["id"],
+                {"status": status, "data_json": bundle, "updated_at": now},
+            )
+    payload = ledger.models.normalize_filing(
+        {
+            "period": period,
+            "form_id": form_id,
+            "form_name": bundle.get("form_name", ""),
+            "status": status,
+            "data_json": bundle,
+            "note": "UI 本地降级保存",
+        }
+    )
+    payload["updated_at"] = now
+    return table.append(payload)
+
+
+def _save_filing(bundle: dict, status: str) -> dict:
+    modules = _modules()
+    progress = modules["progress"]
+    if progress is not None and hasattr(progress, "save_filing"):
+        return progress.save_filing(bundle, status=status)
+    return _fallback_save(bundle, status)
+
+
+def _mark_submitted(period: str, form_id: str) -> dict:
+    modules = _modules()
+    progress = modules["progress"]
+    if progress is not None and hasattr(progress, "mark_submitted"):
+        return progress.mark_submitted(period, form_id)
+    bundle = _bundle_of(period, form_id)
+    if bundle:
+        return _fallback_save(bundle, "已申报")
+    return {"ok": False}
+
+
+def _progress(period: str) -> dict:
+    """申报进度（优先 filing.progress.progress，降级按 filings 表统计）。"""
+    modules = _modules()
+    progress = modules["progress"]
+    if progress is not None and hasattr(progress, "progress"):
+        try:
+            return dict(progress.progress(period))
+        except Exception:  # noqa: BLE001
+            pass
+    checklist = completion_checklist(period)
+    rows = []
+    try:
+        rows = [row for row in ledger.table("filings").read() if str(row.get("period")) == str(period)]
+    except Exception:  # noqa: BLE001
+        rows = []
+    done_ids = {str(row.get("form_id")) for row in rows if str(row.get("status")) in {"已确认", "已申报"}}
+    items = [
+        {
+            "form_id": item["form_id"],
+            "form_name": item["item"],
+            "status": next(
+                (str(row.get("status")) for row in rows if str(row.get("form_id")) == item["form_id"]),
+                "未开始",
+            ),
+            "required": item.get("required", True),
+            "updated_at": next(
+                (str(row.get("updated_at") or row.get("created_at") or "") for row in rows if str(row.get("form_id")) == item["form_id"]),
+                "",
+            ),
+        }
+        for item in checklist
+    ]
+    done = len(done_ids & {item["form_id"] for item in items})
+    total = len(items) or 1
+    return {
+        "period": period,
+        "total": len(items),
+        "done": done,
+        "percent": int(round(done / total * 100)),
+        "items": items,
+    }
+
+
+def _list_filings(period: str) -> list[dict]:
+    modules = _modules()
+    progress = modules["progress"]
+    if progress is not None and hasattr(progress, "list_filings"):
+        try:
+            return list(progress.list_filings(period))
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        return [row for row in ledger.table("filings").read() if str(row.get("period")) == str(period)]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _bundle_of(period: str, form_id: str) -> dict | None:
+    for bundle in st.session_state.get(STATE_BUNDLES, {}).get(period, []) or []:
+        if str(bundle.get("form_id")) == str(form_id):
+            return bundle
+    return None
+
+
+# =============================================================================
+# 生成与校验
+# =============================================================================
+def _generate(period: str) -> None:
+    modules = _modules()
+    registry = modules["registry"]
+    if registry is None:
+        ui.module_missing("申报表生成", "filing.registry", detail=runtime.error_of("filing.registry"))
+        return
+    try:
+        bundles = list(registry.build_all(period))
+    except Exception as exc:  # noqa: BLE001
+        ui.failure("生成申报表失败，请确认台账数据完整后重试。", exc)
+        return
+    checks: dict[str, dict] = {}
+    validator = modules["validator"]
+    if validator is not None and hasattr(validator, "validate_bundle"):
+        for bundle in bundles:
+            try:
+                checks[str(bundle.get("form_id"))] = dict(validator.validate_bundle(bundle))
+            except Exception as exc:  # noqa: BLE001
+                checks[str(bundle.get("form_id"))] = {
+                    "status": "WARNING",
+                    "summary": f"校验执行失败：{exc}",
+                    "details": [],
+                }
+    st.session_state.setdefault(STATE_BUNDLES, {})[period] = bundles
+    st.session_state.setdefault(STATE_CHECKS, {})[period] = checks
+    cache.clear()
+    _flash(f"已生成 {len(bundles)} 张申报表（{period_label(period)}）")
+    st.rerun()
+
+
+# =============================================================================
+# 导出
+# =============================================================================
+def _fallback_export_excel(period: str, bundles: Sequence[dict]) -> Path:
+    """``filing.export`` 未就绪时的兜底导出（openpyxl 简版工作簿）。"""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "申报总览"
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="1E5AA8")
+    summary_sheet.append(["报表编码", "报表名称", "类别", "生成时间", "状态"])
+    for cell in summary_sheet[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    for bundle in bundles:
+        summary_sheet.append(
+            [
+                bundle.get("form_id", ""),
+                bundle.get("form_name", ""),
+                bundle.get("category", ""),
+                bundle.get("generated_at", ""),
+                bundle.get("status", "草稿"),
+            ]
+        )
+    for bundle in bundles:
+        sheet = workbook.create_sheet((bundle.get("form_id") or "报表")[:31])
+        sheet.append([bundle.get("form_name", "申报表")])
+        sheet["A1"].font = Font(bold=True, size=14)
+        sheet.append([f"税款所属期：{bundle.get('period_label') or bundle.get('period') or ''}"])
+        sheet.append([])
+        for section in bundle.get("sections") or []:
+            sheet.append([section.get("title", "")])
+            sheet.cell(row=sheet.max_row, column=1).font = Font(bold=True, color="1E5AA8")
+            sheet.append(["栏次", "名称", "金额", "来源", "口径"])
+            for cell in sheet[sheet.max_row]:
+                cell.font = Font(bold=True)
+            for line in section.get("lines") or []:
+                sheet.append(
+                    [
+                        line.get("line_no", ""),
+                        line.get("name", ""),
+                        F.to_float(line.get("value")),
+                        line.get("source", ""),
+                        line.get("rule", ""),
+                    ]
+                )
+            sheet.append([])
+        sheet.append(["⚠️ " + config.DISCLAIMER])
+        widths = {"A": 14, "B": 46, "C": 16, "D": 24, "E": 30}
+        for column, width in widths.items():
+            sheet.column_dimensions[column].width = width
+    target = Path(config.EXPORT_DIR) / f"申报包_{period}_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    workbook.save(target)
+    return target
+
+
+def _export_package(period: str, bundles: Sequence[dict]) -> Path:
+    modules = _modules()
+    export = modules["export"]
+    if export is not None and hasattr(export, "export_package_excel"):
+        return Path(export.export_package_excel(period, bundles=list(bundles)))
+    return _fallback_export_excel(period, bundles)
+
+
+def _export_checklist(period: str, bundles: Sequence[dict]) -> Path:
+    modules = _modules()
+    export = modules["export"]
+    if export is not None and hasattr(export, "export_checklist_markdown"):
+        return Path(export.export_checklist_markdown(period, bundles=list(bundles)))
+    lines = [f"# 申报核对清单（{period_label(period)}）", ""]
+    for bundle in bundles:
+        lines.append(f"## {bundle.get('form_name')}（{bundle.get('form_id')}）")
+        for section in bundle.get("sections") or []:
+            lines.append(f"### {section.get('title')}")
+            for item in section.get("lines") or []:
+                lines.append(
+                    f"- 第{item.get('line_no')}栏 {item.get('name')}：{F.fmt_money(item.get('value'))}"
+                )
+        lines.append("")
+    lines.append(config.DISCLAIMER)
+    target = Path(config.EXPORT_DIR) / f"申报核对清单_{period}_{datetime.now():%Y%m%d_%H%M%S}.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines), encoding="utf-8")
+    return target
+
+
+def _render_export(period: str, bundles: Sequence[dict]) -> None:
+    ui.section("📦 导出申报包", "Excel 工作簿含各申报表与提交核对清单，便于对照电子税务局逐栏录入。")
+    cols = st.columns(2)
+    with cols[0]:
+        if st.button("📊 生成 Excel 申报包", key="filing_export_excel", type="primary", width="stretch"):
+            try:
+                path = _export_package(period, bundles)
+            except Exception as exc:  # noqa: BLE001
+                ui.failure("导出 Excel 申报包失败。", exc)
+            else:
+                st.session_state["_filing_excel_path"] = str(path)
+                st.success("Excel 申报包已生成")
+    with cols[1]:
+        if st.button("📝 生成核对清单 Markdown", key="filing_export_checklist", width="stretch"):
+            try:
+                path = _export_checklist(period, bundles)
+            except Exception as exc:  # noqa: BLE001
+                ui.failure("生成核对清单失败。", exc)
+            else:
+                st.session_state["_filing_checklist_path"] = str(path)
+                st.success("核对清单已生成")
+
+    download_cols = st.columns(2)
+    excel_path = st.session_state.get("_filing_excel_path")
+    with download_cols[0]:
+        if excel_path and Path(excel_path).exists():
+            file_path = Path(excel_path)
+            st.download_button(
+                "⬇️ 下载 Excel 申报包",
+                data=file_path.read_bytes(),
+                file_name=file_path.name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="filing_download_excel",
+                width="stretch",
+            )
+    checklist_path = st.session_state.get("_filing_checklist_path")
+    with download_cols[1]:
+        if checklist_path and Path(checklist_path).exists():
+            file_path = Path(checklist_path)
+            st.download_button(
+                "⬇️ 下载核对清单",
+                data=file_path.read_bytes(),
+                file_name=file_path.name,
+                mime="text/markdown",
+                key="filing_download_checklist",
+                width="stretch",
+            )
+
+
+# =============================================================================
+# 单张申报表
+# =============================================================================
+def _lines_frame(lines: Sequence[dict]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "栏次": ("⭐ " if line.get("highlight") else "") + str(line.get("line_no") or ""),
+                "名称": line.get("name") or "",
+                "金额": F.fmt_money(line.get("value")),
+                "来源": line.get("source") or "",
+                "口径": line.get("rule") or "",
+            }
+            for line in lines
+        ]
+    )
+
+
+def _render_totals(totals: dict) -> None:
+    """申报表合计指标卡（优先展示关键税种字段）。"""
+    if not isinstance(totals, dict) or not totals:
+        return
+    ordered = [key for key in TOTAL_PRIORITY if key in totals]
+    ordered += [key for key in totals if key not in ordered]
+    items = []
+    for key in ordered:
+        value = totals.get(key)
+        if key in SKIP_KEYS or isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if key in PERCENT_KEYS:
+            text = F.fmt_pct(value)
+        elif key in COUNT_KEYS:
+            text = f"{int(value)} 份"
+        else:
+            text = F.fmt_money(value)
+        items.append({"label": TOTAL_LABELS.get(key, key), "value": text})
+        if len(items) >= 6:
+            break
+    if items:
+        ui.metric_row(items)
+
+
+def _render_check(check: dict, bundle: dict) -> None:
+    st.markdown("**校验结果**")
+    if not check:
+        st.info("未执行自动校验（校验模块未就绪），请人工核对栏次数据。")
+        return
+    status = check.get("status") or "PASS"
+    summary = check.get("summary") or ""
+    ui.status_alert(status, summary or "校验完成")
+    details = check.get("details") or []
+    if details:
+        ui.status_table(details)
+    theme.disclaimer(check.get("disclaimer"))
+
+
+def _render_guide(bundle: dict) -> None:
+    modules = _modules()
+    guide = modules["guide"]
+    steps: list[str] = []
+    submission_text = ""
+    if guide is not None:
+        try:
+            if hasattr(guide, "build_guide"):
+                steps = list(guide.build_guide(bundle))
+            if hasattr(guide, "export_submission_text"):
+                submission_text = str(guide.export_submission_text(bundle) or "")
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"填报指引生成失败：{exc}")
+    if not steps and not submission_text:
+        steps = [
+            "登录云南省电子税务局，进入「我要办税 → 税费申报及缴纳」。",
+            f"选择税款所属期 {bundle.get('period_label') or bundle.get('period')}，进入对应申报表。",
+            "按本页展示的栏次金额逐项录入，核对合计与本期应补（退）税额。",
+            "确认无误后提交申报，并按提示完成税费缴纳（零申报也需提交）。",
+        ]
+    if steps:
+        with st.expander("📖 填报指引", expanded=False):
+            for step in steps:
+                st.markdown(f"- {step}")
+            st.caption("指引由系统按申报表自动生成，最终以电子税务局页面为准。")
+    if submission_text:
+        with st.expander("📋 逐栏录入文本（可复制）", expanded=False):
+            st.code(submission_text, language="text")
+
+
+def _render_bundle_actions(bundle: dict, period: str) -> None:
+    form_id = str(bundle.get("form_id") or "")
+    status = str(bundle.get("status") or "草稿")
+    st.caption(f"当前状态：{F.status_icon(status)} {status}")
+    cols = st.columns(3)
+    actions = [
+        ("💾 保存草稿", "草稿", cols[0], f"filing_save_{form_id}"),
+        ("✅ 标记已确认", "已确认", cols[1], f"filing_confirm_{form_id}"),
+        ("📤 标记已申报", "已申报", cols[2], f"filing_submit_{form_id}"),
+    ]
+    for label, target_status, column, key in actions:
+        with column:
+            if st.button(label, key=key, width="stretch"):
+                try:
+                    if target_status == "已申报":
+                        _mark_submitted(period, form_id)
+                    else:
+                        _save_filing(bundle, target_status)
+                except Exception as exc:  # noqa: BLE001
+                    ui.failure(f"更新申报状态失败：{label}", exc)
+                else:
+                    bundle["status"] = target_status
+                    stored = st.session_state.get(STATE_BUNDLES, {}).get(period) or []
+                    for item in stored:
+                        if str(item.get("form_id")) == form_id:
+                            item["status"] = target_status
+                    cache.clear()
+                    _flash(f"{bundle.get('form_name')} 状态已更新为「{target_status}」")
+                    st.rerun()
+
+
+def _render_bundle(bundle: dict, check: dict, period: str, index: int) -> None:
+    level = (check or {}).get("status") or (bundle.get("summary") or {}).get("level") or "PASS"
+    form_id = str(bundle.get("form_id") or f"FORM{index}")
+    form_name = bundle.get("form_name") or form_id
+    status = str(bundle.get("status") or "草稿")
+    label = f"{F.status_icon(level)} {form_name} · {status}"
+    with st.expander(label, expanded=(index == 0)):
+        st.caption(
+            f"报表编码：{form_id} · 类别：{bundle.get('category') or '—'} · "
+            f"频率：{bundle.get('frequency') or '—'} · 生成时间：{bundle.get('generated_at') or '—'}"
+        )
+        summary = bundle.get("summary") or {}
+        ui.status_alert(summary.get("level") or level, summary.get("text") or "申报表已生成，请逐栏核对。")
+
+        for section in bundle.get("sections") or []:
+            st.markdown(f"**{section.get('title') or '申报表'}**")
+            lines = section.get("lines") or []
+            if lines:
+                st.dataframe(_lines_frame(lines), hide_index=True, width="stretch")
+            else:
+                st.caption("本分区无栏次数据")
+
+        _render_totals(bundle.get("totals") or {})
+        _render_check(check, bundle)
+        _render_bundle_actions(bundle, period)
+        _render_guide(bundle)
+
+        with st.expander("🧾 生成依据数据快照（审计用）", expanded=False):
+            data = bundle.get("data") or {}
+            if data:
+                st.json(data, expanded=False)
+            else:
+                st.caption("无数据快照")
+        theme.disclaimer(bundle.get("disclaimer"))
+
+
+# =============================================================================
+# 进度与清单
+# =============================================================================
+def _render_progress(period: str, bundles: Sequence[dict]) -> None:
+    progress = _progress(period)
+    percent = max(0, min(100, int(progress.get("percent") or 0)))
+    done = int(progress.get("done") or 0)
+    total = int(progress.get("total") or 0)
+    ui.section("📈 申报进度", f"{period_label(period)} 申报事项完成情况（已确认 / 已申报计入完成）。")
+    st.progress(percent / 100, text=f"完成 {done}/{total} · {percent}%")
+    ui.metric_row(
+        [
+            {"label": "申报事项总数", "value": f"{total}"},
+            {"label": "已完成", "value": f"{done}"},
+            {"label": "待办理", "value": f"{max(total - done, 0)}"},
+        ],
+        columns=3,
+    )
+
+    checklist = completion_checklist(period)
+    items = {str(item.get("form_id")): item for item in progress.get("items") or []}
+    frames = []
+    for item in checklist:
+        form_id = item.get("form_id")
+        record = items.get(str(form_id)) or {}
+        frames.append(
+            {
+                "申报事项": item.get("item"),
+                "是否必需": "必需" if item.get("required") else "视情况",
+                "系统状态": record.get("status") or "未开始",
+                "更新时间": record.get("updated_at") or "—",
+                "说明": item.get("note") or "",
+            }
+        )
+    with st.container(border=True):
+        st.markdown("**申报完成清单**")
+        st.dataframe(pd.DataFrame(frames), hide_index=True, width="stretch")
+        st.caption("完成清单由 engine.completion_checklist 生成；状态来自本地申报记录。")
+
+    filings = _list_filings(period)
+    if filings:
+        with st.expander("🗂️ 本地申报记录", expanded=False):
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "报表编码": row.get("form_id"),
+                            "报表名称": row.get("form_name"),
+                            "状态": row.get("status"),
+                            "更新时间": row.get("updated_at") or row.get("created_at") or "—",
+                        }
+                        for row in filings
+                    ]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+
+
+def _render_guides_summary(bundles: Sequence[dict]) -> None:
+    ui.section("📖 填报指引", "按申报表生成的逐项操作步骤，可对照电子税务局逐栏录入。")
+    if not bundles:
+        st.caption("生成申报表后，这里会列出每张表的填报步骤。")
+        return
+    for bundle in bundles:
+        with st.expander(f"{bundle.get('form_name') or bundle.get('form_id')} 填报指引", expanded=False):
+            _render_guide(bundle)
+    theme.disclaimer()
+
+
+# =============================================================================
+# 页面入口
+# =============================================================================
+def render() -> None:
+    """渲染申报填报页。"""
+    ui.page_header(
+        "申报填报",
+        "生成、校验、导出并跟踪季度申报表；申报数据全部来自本地台账与确定性算税引擎。",
+        icon="📋",
+        right_text=f"当前季度：{period_label(current_quarter())}",
+    )
+    _show_flash()
+
+    modules = _modules()
+    if modules["registry"] is None:
+        ui.module_missing("申报表生成", "filing.registry", detail=runtime.error_of("filing.registry"))
+
+    periods = list(quarter_options(count=8))
+    cols = st.columns([2, 2, 2])
+    with cols[0]:
+        period = st.selectbox("税款所属期", periods, index=0, key="filing_period")
+    with cols[1]:
+        st.write("")
+        if st.button("🔄 生成申报表", key="filing_generate", type="primary", width="stretch"):
+            _generate(period)
+    with cols[2]:
+        st.write("")
+        st.caption("生成后请逐表核对栏次，再导出 / 保存草稿 / 标记已申报。")
+
+    bundles = list(st.session_state.get(STATE_BUNDLES, {}).get(period, []) or [])
+    checks = st.session_state.get(STATE_CHECKS, {}).get(period, {}) or {}
+    if not bundles:
+        st.info(
+            "尚未生成本期间的申报表。点击「生成申报表」后，将自动汇总收入台账、费用台账、研发辅助账与合同台账，"
+            "生成增值税、企业所得税预缴、财务报表与印花税申报表。",
+            icon="📋",
+        )
+        _render_progress(period, bundles)
+        _render_guides_summary(bundles)
+        theme.disclaimer()
+        return
+
+    total_status = checks.get("__summary__") or {}
+    ui.metric_row(
+        [
+            {"label": "申报表数量", "value": f"{len(bundles)}"},
+            {"label": "校验通过", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) == 'PASS')}"},
+            {"label": "需关注", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) in {'WARNING', 'ERROR'})}"},
+        ],
+        columns=3,
+    )
+
+    for index, bundle in enumerate(bundles):
+        form_id = str(bundle.get("form_id"))
+        _render_bundle(bundle, checks.get(form_id) or {}, period, index)
+
+    _render_export(period, bundles)
+    _render_progress(period, bundles)
+    _render_guides_summary(bundles)
+    theme.disclaimer()
