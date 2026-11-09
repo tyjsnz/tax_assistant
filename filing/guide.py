@@ -133,6 +133,9 @@ def build_guide(bundle: dict) -> list[str]:
     summary = (bundle.get("summary") or {}).get("text")
     if summary:
         steps.append(f"校验结论：{summary}")
+    policy_text = str(bundle.get("policy_basis_text") or "").strip()
+    if policy_text:
+        steps.append(f"政策依据：{policy_text}。")
     steps.append(config.DISCLAIMER)
     return steps
 

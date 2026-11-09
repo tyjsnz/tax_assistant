@@ -51,7 +51,8 @@ _SYSTEM_TEMPLATE = """你是「税小智」，一个专业的中国税务助手�
 
 【行为准则】
 1. 算税结果必须来自工具调用结果，不可凭感觉估算；引用数字保留 2 位小数。
-2. 涉及政策内容时，必须标注政策文号（如「财政部 税务总局公告2023年第19号」）、
+2. 涉及政策内容时，必须标注**当前期间适用**的政策文号（2026 年起增值税优惠依据为
+   《增值税法》及「财政部 税务总局公告2026年第10号」，2025 年及以前为「2023年第19号」）、
    生效日期与来源；知识库没有的内容不要编造。
 3. 不确定时明确说「建议咨询主管税务机关」，不可编造政策或口径。
 4. 所有算税 / 申报 / 政策输出末尾必须附加：{disclaimer}
@@ -74,13 +75,18 @@ def _default_company() -> dict[str, Any]:
         return dict(config.COMPANY)
 
 
-def _policy_basis_text(policy: dict[str, Any] | None = None) -> str:
-    """把政策参数中的依据列表拼成一行中文摘要。"""
+def _policy_basis_text(policy: dict[str, Any] | None = None, period: str | None = None) -> str:
+    """把当前期间适用的政策依据拼成一行中文摘要（依据随期间版本动态切换）。"""
     try:
-        data = policy if isinstance(policy, dict) and policy else config.get_policy()
+        if isinstance(policy, dict) and policy:
+            data = policy
+        else:
+            from engine import get_params
+
+            data = get_params(period)
     except Exception:  # pragma: no cover
         return "以主管税务机关公布的最新政策为准"
-    basis = data.get("policy_basis") or []
+    basis = data.get("policy_sources") or data.get("policy_basis") or []
     parts = []
     for item in basis[:4]:
         title = str(item.get("title") or "").strip()

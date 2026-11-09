@@ -18,9 +18,15 @@ from engine.money import (
     yuan_cn,
 )
 from engine.policy_params import (
+    VAT_LAW_EFFECTIVE,
     describe as describe_policy,
     get_params,
     get_rate_table,
+    get_version,
+    list_versions,
+    policy_basis_text,
+    sources_for,
+    vat_basis_text,
 )
 from engine.rd_deduction import (
     RD_CATEGORY_MAP,
@@ -67,6 +73,12 @@ __all__ = [
     "get_params",
     "get_rate_table",
     "describe_policy",
+    "get_version",
+    "list_versions",
+    "policy_basis_text",
+    "sources_for",
+    "vat_basis_text",
+    "VAT_LAW_EFFECTIVE",
     # 金额工具
     "dec",
     "round2",

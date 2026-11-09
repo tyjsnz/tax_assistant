@@ -24,6 +24,8 @@ from engine import (
     filing_deadlines,
     get_params,
     get_rate_table,
+    list_versions,
+    policy_basis_text,
     next_deadline,
     pct,
     prev_quarter,
@@ -158,6 +160,22 @@ class TestVAT:
     def test_negative_input_rejected(self):
         with pytest.raises(ValueError):
             calc_vat(-1, 0)
+
+    def test_policy_source_switches_by_period(self):
+        """政策依据随期间切换：2024 引用 2023 年第 19 号，2026 引用 2026 年第 10 号。"""
+        old = calc_vat(103000, 0, "2024Q1")
+        new = calc_vat(103000, 0, "2026Q1")
+        assert old["policy_version_id"] == "2023-2025"
+        assert "2023年第19号" in old["vat_policy_source"]
+        assert new["policy_version_id"] == "2026-2027"
+        assert "2026年第10号" in new["vat_policy_source"]
+        assert old["policy_sources"] and new["policy_sources"]
+        # 2026 版明确 1% 不适用于销售/出租不动产、转让土地使用权
+        assert "销售不动产" in " ".join(new["vat_reduction_exclusions"])
+        assert new["vat_threshold_per_transaction"] == pytest.approx(1000.0)
+        assert old["vat_threshold_per_transaction"] == pytest.approx(500.0)
+        # 金额口径在新旧政策下保持一致（免税额相同）
+        assert old["vat_payable"] == new["vat_payable"] == 0
 
     def test_disclaimer_and_breakdown_present(self):
         result = calc_vat(103000, 0, "2026Q1")
@@ -452,3 +470,42 @@ class TestPolicyParams:
             assert source["source"]
             assert source["effective_date"]
             assert source["expiry_date"]
+
+    def test_version_mapping_by_period(self):
+        """期间边界正确匹配政策版本（2025Q4 → 19号；2026-01 → 10号）。"""
+        assert get_params("2023Q1")["policy_version_id"] == "2023-2025"
+        assert get_params("2025Q4")["policy_version_id"] == "2023-2025"
+        assert get_params("2026-01")["policy_version_id"] == "2026-2027"
+        assert get_params("2026Q1")["policy_version_id"] == "2026-2027"
+        assert get_params("2027Q4")["policy_version_id"] == "2026-2027"
+
+    def test_2026_sources_and_superseded(self):
+        """2026 版依据为 2026 年第 10 号，并显式标注 2023 年第 19 号已停止执行。"""
+        params = get_params("2026Q2")
+        sources = " ".join(item["source"] for item in params["policy_sources"])
+        assert "2026年第10号" in sources
+        assert "2023年第12号" in sources  # 六税两费 / 小微所得税继续有效
+        assert any("停止执行" in doc for doc in params["superseded_documents"])
+        assert any("2023年第19号" in doc for doc in params["superseded_documents"])
+
+    def test_2024_sources(self):
+        params = get_params("2024Q3")
+        sources = " ".join(item["source"] for item in params["policy_sources"])
+        assert "2023年第19号" in sources
+        assert params["superseded_documents"] == []
+
+    def test_rate_table_cites_applicable_version(self):
+        text_2026 = " ".join(row["依据"] for row in get_rate_table("2026Q1"))
+        text_2024 = " ".join(row["依据"] for row in get_rate_table("2024Q1"))
+        assert "2026年第10号" in text_2026
+        assert "2023年第19号" in text_2024
+
+    def test_list_versions_and_basis_text(self):
+        versions = list_versions()
+        assert len(versions) >= 2
+        ids = {item["id"] for item in versions}
+        assert {"2023-2025", "2026-2027"} <= ids
+        assert "2026年第10号" in policy_basis_text("2026Q1")
+        assert "2023年第19号" in policy_basis_text("2024Q1")
+        assert policy_basis_text("2026Q1", applies_to="vat")
+        assert "2026年第10号" in policy_basis_text("2026Q1", applies_to="vat")

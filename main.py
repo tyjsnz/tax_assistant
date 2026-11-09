@@ -41,6 +41,9 @@ def cmd_calc_vat(args: argparse.Namespace) -> int:
             print(f"  {row['label']:<18}¥{row['value']:>14,.2f}")
         print("-" * 56)
         print(f"  {result['note']}")
+        policy_source = result.get("vat_policy_source")
+        if policy_source:
+            print(f"  📌 政策依据：{policy_source}")
         for warning in result["warnings"]:
             print(f"  ⚠️ {warning}")
         print(f"  {result['disclaimer']}")

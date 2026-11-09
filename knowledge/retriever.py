@@ -285,6 +285,23 @@ def _doc_tokens(policy: dict[str, Any]) -> list[str]:
     return tokens
 
 
+#: 查询词 → 文档关键词的同义扩展加权。
+#: 解决「小规模纳税人现在增值税税率是多少」这类问题被「六税两费」长标题淹没的问题，
+#: 让标题/标签真正命中主题（征收率、起征点、加计扣除等）的政策优先返回。
+_SYNONYM_BOOSTS: dict[str, tuple[str, ...]] = {
+    "税率": ("征收率", "减按", "1%"),
+    "征收率": ("征收率", "减按", "1%"),
+    "免税额度": ("起征点", "免征", "免税"),
+    "起征点": ("起征点", "免征", "免税"),
+    "免税": ("免征", "免税", "起征点"),
+    "加计扣除": ("加计扣除", "研发费用"),
+    "印花税": ("印花税",),
+    "小微": ("小型微利",),
+    "个税": ("个人所得税", "扣缴"),
+    "技术合同": ("技术转让", "技术开发", "免征"),
+}
+
+
 def search(query: str, top_k: int = 5, category: str | None = None) -> list[dict[str, Any]]:
     """BM25 检索政策，返回带 ``score`` 的政策列表（降序）；无命中返回空列表。"""
     query_tokens = tokenize(query)
@@ -322,13 +339,20 @@ def search(query: str, top_k: int = 5, category: str | None = None) -> list[dict
             denominator = tf + k1 * (1.0 - b + b * length / (avg_len or 1.0))
             score += idf * tf * (k1 + 1.0) / denominator
         # 标题 / 标签直接命中额外加权，避免长文档淹没标题匹配
-        title_tokens = set(tokenize(policy.get("title") or ""))
-        tag_tokens = set(tokenize(" ".join(policy.get("tags") or [])))
+        title_text = policy.get("title") or ""
+        tag_text = " ".join(policy.get("tags") or [])
+        title_tokens = set(tokenize(title_text))
+        tag_tokens = set(tokenize(tag_text))
         for token in query_set:
             if token in title_tokens:
                 score += 0.8
             elif token in tag_tokens:
                 score += 0.4
+        # 主题同义词加权（查「税率」时优先返回标题含「征收率/减按/1%」的政策）
+        haystack = f"{title_text} {tag_text}"
+        for word, terms in _SYNONYM_BOOSTS.items():
+            if word in query:
+                score += sum(1.0 for term in terms if term in haystack)
         if score > 0:
             item = dict(policy)
             item["score"] = round(score, 4)

@@ -207,7 +207,7 @@ def test_system_prompt_content():
     assert "税小智" in prompt
     assert config.COMPANY["name"] in prompt
     assert config.DISCLAIMER in prompt
-    assert "2023年第19号" in prompt
+    assert ("2026年第10号" in prompt) or ("2023年第19号" in prompt)
     assert "不得" in prompt and "算税" in prompt
     assert prompt_templates.SYSTEM_PROMPT
     assert prompt_templates.PERSONA == "税小智"
@@ -413,7 +413,7 @@ def test_calc_vat_tool_exemption():
     assert data["vat_exempt"] == 792.08
     assert data["total_exclusive"] == 79207.92
     assert "免征" in result["display"]
-    assert "2023年第19号" in result["display"]
+    assert "财政部 税务总局公告2026年第10号" in result["display"]
     assert data["disclaimer"] == config.DISCLAIMER
 
 
@@ -461,7 +461,7 @@ def test_search_policy_tool():
     matched = result["data"]["matched"]
     assert matched and matched[0]["title"]
     assert matched[0]["source"]
-    assert "2023年第19号" in result["display"]
+    assert "财政部 税务总局公告" in result["display"]
 
 
 def test_calendar_tool():
@@ -496,7 +496,7 @@ def test_local_reply_policy():
     result = orchestrator.local_reply("小规模纳税人现在增值税税率是多少？")
     assert result["intent"] == "policy"
     assert result["used_llm"] is False
-    assert "2023年第19号" in result["reply"]
+    assert "2026年第10号" in result["reply"]
     assert config.DISCLAIMER in result["reply"]
 
 

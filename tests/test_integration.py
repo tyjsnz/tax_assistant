@@ -96,6 +96,19 @@ class TestFilingPipeline:
         assert lines["24"]["value"] == pytest.approx(1000.0)
         assert lines["18"]["value"] - lines["22"]["value"] == pytest.approx(lines["24"]["value"])
 
+    def test_policy_basis_bound_to_period(self, demo_data):
+        """申报表 bundle 的政策依据随期间自动绑定（2026 → 10 号公告；2024 → 19 号公告）。"""
+        bundle_2026 = registry.build_form("VAT_QUARTERLY", "2026Q2")
+        assert bundle_2026["policy_version_id"] == "2026-2027"
+        assert "2026年第10号" in bundle_2026["policy_basis_text"]
+        assert any("政策依据" in step and "2026年第10号" in step for step in bundle_2026["guide"])
+        assert any("停止执行" in doc for doc in bundle_2026["calc"]["superseded_documents"])
+
+        bundle_2024 = registry.build_form("VAT_QUARTERLY", "2024Q2")
+        assert bundle_2024["policy_version_id"] == "2023-2025"
+        assert "2023年第19号" in bundle_2024["policy_basis_text"]
+        assert "2026年第10号" not in bundle_2024["policy_basis_text"]
+
     def test_validation_pass(self, demo_data):
         bundle = registry.build_form("VAT_QUARTERLY", "2026Q2")
         report = validator.validate_bundle(bundle)

@@ -92,7 +92,8 @@ settings_snapshot() -> dict
 from engine import (
     calc_vat, calc_corp_tax, calc_cit_prepay, calc_rd_deduction,
     aggregate_rd_expenses, calc_stamp_tax,
-    get_params, get_rate_table, describe_policy,
+    get_params, get_rate_table, describe_policy, get_version, list_versions,
+    policy_basis_text, sources_for, vat_basis_text,
     quarter_of, quarter_start, quarter_end, quarter_range, period_range, period_label,
     current_quarter, current_month, prev_quarter, quarter_options, month_options,
     filing_deadlines, upcoming_deadlines, next_deadline, reminders, reminder_text,
@@ -113,6 +114,10 @@ calc_vat(quarterly_total_inclusive, special_invoice_inclusive=0.0, period="", *,
 # 扩展字段：special_inclusive ordinary_inclusive exemption_limit limit_basis levy_rate standard_rate
 #           vat_at_standard vat_reduction vat_exempt_at_standard surtax_full surtax_discount
 #           total_tax tax_burden warnings breakdown
+# 政策依据（随期间版本自动切换）：
+#           policy_version policy_version_id policy_sources policy_basis vat_policy_source
+#           vat_reduction_scope vat_reduction_exclusions vat_threshold_per_transaction
+#           superseded_documents
 #           return_lines = {line_1_taxable_sales, line_18_tax_amount, line_19_tax_exempt_amount,
 #                           line_22_reduction, line_24_payable, line_10_exempt_sales,
 #                           surtax_city, surtax_education, surtax_local_education}
@@ -147,6 +152,17 @@ calc_stamp_tax(contracts, *, small_scale=True, liutax_discount=None, period="") 
 ```
 
 金额一律四舍五入 2 位小数（`engine.money.round2`，Decimal + ROUND_HALF_UP）。
+
+**政策版本化**（`engine/policy_params.py`）：
+
+* `POLICY_VERSIONS`：按期间维护政策版本（`id/label/effective_from/to/params/sources/notes/
+  superseded_documents`），**历史版本不可改，只追加新版本**；
+* `get_params(period)` 返回参数 + `policy_sources`（含文号/条款/生效日/失效日/原文链接/税种）；
+* `policy_basis_text(period)` / `vat_basis_text(period)` 供 Agent 与界面引用；
+* 2023—2025 年依据财政部 税务总局公告2023年第19号；**2026 年起依据《增值税法》+
+  财政部 税务总局公告2026年第10号**（19 号公告自 2026-01-01 停止执行）；
+* 申报表 bundle 由 `filing.registry.build_form()` 自动补 `policy_version` /
+  `policy_sources` / `policy_basis_text`，并追加到 `guide`。
 
 ### 2.3 `ledger/models.py`
 

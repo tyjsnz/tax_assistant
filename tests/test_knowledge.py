@@ -77,7 +77,8 @@ def test_policy_count_and_required_fields():
         for key in required:
             value = policy["meta"].get(key)
             assert value not in (None, "", []), f"{policy['id']} 缺少 frontmatter 字段 {key}"
-        assert policy["last_verified"] == "2026-11-01", policy["id"]
+        assert policy["last_verified"] >= "2026-11-01", policy["id"]
+        assert policy["last_verified"] <= __import__("datetime").date.today().isoformat(), policy["id"]
         assert policy["source"], policy["id"]
         assert policy["summary"], policy["id"]
         assert policy["content"]
@@ -112,7 +113,7 @@ def test_policy_sources_and_key_figures():
     all_text = "\n".join(policy["meta"].get("source", "") + policy["content"] for policy in load_policies())
     # 关键政策文号必须准确出现
     for keyword in (
-        "财政部 税务总局公告2023年第19号",
+        "财政部 税务总局公告2026年第10号",
         "财政部 税务总局公告2023年第12号",
         "财政部 税务总局公告2023年第7号",
         "财税〔2016〕36号",
@@ -132,7 +133,7 @@ def test_list_get_and_categories():
     assert len(list_policies("企业所得税")) >= 2
     policy = get_policy("增值税/小规模纳税人起征点与1%征收率")
     assert policy is not None
-    assert "2023年第19号" in policy["source"]
+    assert ("2026年第10号" in policy["source"]) or ("2023年第19号" in policy["source"])
     assert get_policy("不存在的政策") is None
     assert get_policy(policy["title"]) is not None
 
@@ -140,6 +141,14 @@ def test_list_get_and_categories():
 # =============================================================================
 # 检索
 # =============================================================================
+def test_search_ranks_current_rate_policy_first():
+    """「增值税税率」类问句应优先返回当前期间（2026 年第 10 号公告）的起征点/征收率政策。"""
+    hits = retriever.search("小规模纳税人现在增值税税率是多少", top_k=3)
+    assert hits
+    assert "起征点" in hits[0]["title"] or "征收率" in hits[0]["title"]
+    assert "2026年第10号" in hits[0]["source"]
+
+
 def test_tokenize_chinese_bigram():
     tokens = tokenize("小规模纳税人")
     assert "小规" in tokens and "规模" in tokens
@@ -194,7 +203,7 @@ def test_answer_without_api_key():
     assert result["method"] == "retrieval"
     assert result["citations"]
     assert result["matched"]
-    assert "2023年第19号" in result["answer"]
+    assert ("2026年第10号" in result["answer"]) or ("2023年第19号" in result["answer"])
     assert result["disclaimer"] == config.DISCLAIMER
     assert config.DISCLAIMER in result["answer"]
     citation = result["citations"][0]
@@ -236,7 +245,7 @@ def test_answer_llm_error_falls_back():
     result = answer("小规模纳税人免税额度", client=_FakeClient(error=DeepSeekError("鉴权失败", kind="auth")))
     assert result["used_llm"] is False
     assert result["method"] == "retrieval_fallback"
-    assert "2023年第19号" in result["answer"]
+    assert ("2026年第10号" in result["answer"]) or ("2023年第19号" in result["answer"])
     assert result["error"]
 
 
@@ -247,15 +256,15 @@ def test_policy_stats():
     stats = update_checker.policy_stats()
     assert stats["total"] >= 10
     assert stats["categories"]["增值税"] >= 1
-    assert stats["latest_verified"] == "2026-11-01"
+    assert stats["latest_verified"] >= "2026-11-01"
     assert stats["oldest"] is not None
-    assert stats["oldest"]["last_verified"] == "2026-11-01"
+    assert stats["oldest"]["last_verified"] >= "2026-11-01"
 
 
 def test_check_policies_and_log():
     result = update_checker.check_policies(days=90)
     assert result["checked_total"] >= 10
-    assert result["latest_verified"] == "2026-11-01"
+    assert result["latest_verified"] >= "2026-11-01"
     assert isinstance(result["stale"], list)
     assert isinstance(result["advice"], list) and result["advice"]
     assert result["checked_at"]
@@ -268,14 +277,17 @@ def test_check_policies_and_log():
 
 def test_stale_policies_boundaries():
     policies = load_policies()
-    # 全部政策 2026-11-01 核验，today 为 2026-11-09 → 90 天内不过期
+    # 全部政策在 2026-11 核验，今天为当前日期 → 90 天内不过期
     assert update_checker.stale_policies(days=90) == []
-    # 把「今天」推到 2026-12-31 → 距今 60 天，按 30 天阈值全部过期
+    # 把「今天」推到 2026-12-31 → 按 30 天阈值全部过期，天数按各政策 last_verified 计算
+    from datetime import date
+
     stale = update_checker.stale_policies(days=30, today="2026-12-31")
     assert len(stale) == len(policies)
+    horizon = date(2026, 12, 31)
     for item in stale:
         assert item["id"] and item["title"]
-        assert item["days"] == 60
+        assert item["days"] == (horizon - date.fromisoformat(item["last_verified"])).days
     # 阈值足够大时不过期
     assert update_checker.stale_policies(days=3650) == []
 

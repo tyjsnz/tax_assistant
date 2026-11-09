@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import config
+
 from ledger.reports import normalize_quarter
 from filing import cit_prepay, fin_report, stamp_return, vat_return
 
@@ -102,6 +104,24 @@ def build_form(form_id: str, period: Any, **overrides: Any) -> dict[str, Any]:
         if str(record.get("form_id") or "") == form["form_id"]:
             bundle["status"] = str(record.get("status") or bundle["status"])
             break
+    # 政策依据随所属期间自动绑定（2026 年起为增值税法 + 2026 年第 10 号公告）
+    try:
+        from engine import get_params, policy_basis_text
+
+        params = get_params(bundle.get("period"))
+        bundle.setdefault("policy_version", params["policy_version"])
+        bundle.setdefault("policy_version_id", params["policy_version_id"])
+        bundle.setdefault("policy_sources", params["policy_sources"])
+        bundle.setdefault("policy_basis_text", policy_basis_text(bundle.get("period"), top=2))
+        guide = bundle.get("guide")
+        policy_line = f"政策依据：{bundle['policy_basis_text']}。"
+        if isinstance(guide, list) and not any("政策依据" in str(step) for step in guide):
+            if guide and str(guide[-1]).strip() == config.DISCLAIMER:
+                guide.insert(len(guide) - 1, policy_line)
+            else:
+                guide.append(policy_line)
+    except Exception:  # noqa: BLE001 - 政策元数据缺失不应影响申报表生成
+        pass
     return bundle
 
 

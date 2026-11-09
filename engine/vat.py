@@ -5,17 +5,24 @@
 计算口径
 --------
 1. 含税销售额换算为不含税销售额：``不含税 = 含税 / (1 + 1%)``。
-2. 免税判定：以**全部销售额（含开具专用发票的销售额）**判断是否超过季度免税额度
-   （财政部 税务总局公告2023年第19号：合计月销售额未超过10万元 / 季度未超过30万元的，免征增值税）。
+2. 免税判定：以**全部销售额（含开具专用发票的销售额）**判断是否超过季度免税额度。
+   依据按所属期间动态匹配（见 :mod:`engine.policy_params`）：
+   - 2023-01-01 ~ 2025-12-31：财政部 税务总局公告2023年第19号；
+   - 2026-01-01 ~ 2027-12-31：《增值税法》施行后，按财政部 税务总局公告2026年第10号第一条，
+     按季申报起征点为季度销售额 30 万元（不含税）。
    可用 ``limit_basis="ordinary"`` 切换为仅以普票+未开票销售额判断（与部分简化口径一致）。
 3. 免税额度内：普通发票与未开票部分免征增值税；**专用发票部分不免**，按 1% 缴纳。
 4. 超过免税额度：全部销售额按 1% 缴纳，不再免税。
 5. 应纳税额减征额 = 应征销售额 × (3% - 1%)，用于申报表第22栏。
-6. 附加税费 = 实际缴纳增值税 × 12%（城建7% + 教育3% + 地方教育2%）× 六税两费减半 50%。
+   2026 年起 3% 减按 1% 仅适用于**除销售、出租不动产或者转让土地使用权之外**的应税交易
+   （2026 年第 10 号公告第三条第三项第 6 目）。
+6. 附加税费 = 实际缴纳增值税 × 12%（城建7% + 教育3% + 地方教育2%）× 六税两费减半 50%
+   （六税两费依据财政部 税务总局公告2023年第12号，不属于增值税优惠文件，继续有效）。
 """
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from typing import Any
 
@@ -24,6 +31,44 @@ from engine.money import dec, pct, round2, yuan
 from engine.policy_params import get_params
 
 DISCLAIMER = config.DISCLAIMER
+
+
+def _vat_policy_source(params: dict[str, Any]) -> str:
+    """取本期间增值税优惠的核心依据（文号 + 条款 + 期间），避免硬编码文号。
+
+    2023—2025 年引用财政部 税务总局公告2023年第19号；
+    2026 年起引用增值税法 + 财政部 税务总局公告2026年第10号（第一条起征点、
+    第三条第三项第 6 目减按 1%）。
+    """
+    items = [item for item in (params.get("policy_sources") or []) if item.get("applies_to") == "vat"]
+    wanted = [
+        item
+        for item in items
+        if "起征点" in str(item.get("title") or "") or "减按 1%" in str(item.get("title") or "")
+    ] or items[:1]
+    groups: dict[str, dict[str, Any]] = {}
+    for item in wanted:
+        source_text = str(item.get("source") or "").strip()
+        match = re.search(r"\s+(第.+)$", source_text)
+        base = source_text[: match.start()].strip() if match else source_text
+        clause = match.group(1).strip() if match else ""
+        group = groups.setdefault(
+            base,
+            {"clauses": [], "effective": item.get("effective_date") or "", "expiry": item.get("expiry_date") or ""},
+        )
+        if clause and clause not in group["clauses"]:
+            group["clauses"].append(clause)
+    parts: list[str] = []
+    for base, info in groups.items():
+        text = base
+        if info["clauses"]:
+            text += "（" + "、".join(info["clauses"]) + "）"
+        if info["effective"]:
+            text += f"：{info['effective']} 起"
+            if info["expiry"] and info["expiry"] not in {"长期", ""}:
+                text += f"至 {info['expiry']}"
+        parts.append(text)
+    return "；".join(parts) if parts else "以主管税务机关公布的最新政策为准"
 
 
 def calc_vat(
@@ -176,7 +221,14 @@ def calc_vat(
         "total_tax": round2(total_tax),
         "tax_burden": (round2(total_tax / total_exclusive) if total_exclusive > 0 else 0.0),
         "policy_version": params["policy_version"],
+        "policy_version_id": params["policy_version_id"],
         "policy_sources": params["policy_sources"],
+        "policy_basis": params["policy_sources"],
+        "vat_policy_source": _vat_policy_source(params),
+        "vat_reduction_scope": params.get("vat_reduction_scope", ""),
+        "vat_reduction_exclusions": params.get("vat_reduction_exclusions", []),
+        "vat_threshold_per_transaction": params.get("vat_threshold_per_transaction", 0.0),
+        "superseded_documents": params.get("superseded_documents", []),
         "last_verified": params["last_verified"],
         "warnings": warnings,
         # ---- 申报表栏次（小规模纳税人增值税及附加税费申报表） ----

@@ -198,7 +198,7 @@ def _tool_calc_vat(args: dict[str, Any]) -> dict[str, Any]:
         f"- 应缴增值税：¥{yuan(result['vat_payable'])}；免征增值税：¥{yuan(result['vat_exempt'])}",
         f"- 应缴附加税费（六税两费减半后）：¥{yuan(result['surtax'])}；合计应纳税费：¥{yuan(result['total_tax'])}",
         f"- 说明：{result.get('note', '')}",
-        "- 政策依据：财政部 税务总局公告2023年第19号（2023-01-01 至 2027-12-31）",
+        f"- 政策依据：{result.get('vat_policy_source') or '以主管税务机关公布的最新政策为准'}",
     ]
     for warning in result.get("warnings") or []:
         lines.append(f"⚠️ {warning}")
