@@ -83,6 +83,15 @@ PERIOD_STATUSES: tuple[str, ...] = ("未结账", "已结账", "已申报", "已�
 #: 归档包类型
 ARCHIVE_KINDS: tuple[str, ...] = ("申报包", "结账包", "其他")
 
+#: 员工状态
+EMPLOYEE_STATUSES: tuple[str, ...] = ("在职", "离职")
+
+#: 工资表状态
+PAYROLL_STATUSES: tuple[str, ...] = ("草稿", "已确认", "已申报")
+
+#: 减除费用扣除方式
+BASIC_DEDUCTION_CHOICES: tuple[str, ...] = ("累计预扣", "一次性60000")
+
 DIRECTIONS: tuple[str, ...] = ("借", "贷")
 
 # 小规模纳税人征收率（3% 减按 1%）
@@ -405,6 +414,66 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("note", "str", "备注"),
             _col("created_at", "str", "创建时间"),
             _col("confirmed_at", "str", "确认时间"),
+        ],
+    },
+    # 员工档案（P1-B 个税扣缴）
+    "employees": {
+        "file": "employees.csv",
+        "prefix": "EMP",
+        "label": "员工档案",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("employee_no", "str", "工号"),
+            _col("name", "str", "姓名"),
+            _col("id_card_masked", "str", "身份证号(脱敏)"),
+            _col("phone", "str", "手机号"),
+            _col("department", "str", "部门"),
+            _col("position", "str", "岗位"),
+            _col("hire_date", "date", "入职日期"),
+            _col("leave_date", "date", "离职日期"),
+            _col("status", "str", "状态"),
+            _col("social_insurance_base", "money", "社保缴费基数"),
+            _col("housing_fund_base", "money", "公积金缴费基数"),
+            _col("special_deduction_json", "json", "专项附加扣除明细"),
+            _col("deduction_choice", "str", "减除费用方式"),
+            _col("is_deduction_qualified", "bool", "是否扣除减除费用"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+            _col("updated_at", "str", "更新时间"),
+        ],
+    },
+    # 月度工资表（P1-B 个税扣缴，含累计预扣计算结果快照）
+    "payroll": {
+        "file": "payroll.csv",
+        "prefix": "PAY",
+        "label": "月度工资表",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("period", "period", "所属月份"),
+            _col("employee_id", "str", "员工编号"),
+            _col("employee_name", "str", "姓名"),
+            _col("gross_salary", "money", "应发工资"),
+            _col("bonus", "money", "奖金"),
+            _col("allowance", "money", "补贴"),
+            _col("social_insurance", "money", "个人社保"),
+            _col("housing_fund", "money", "个人公积金"),
+            _col("special_deduction", "money", "专项附加扣除"),
+            _col("other_deduction", "money", "其他扣除"),
+            _col("cumulative_income", "money", "累计收入"),
+            _col("cumulative_basic_deduction", "money", "累计减除费用"),
+            _col("cumulative_social", "money", "累计专项扣除"),
+            _col("cumulative_special", "money", "累计专项附加扣除"),
+            _col("cumulative_other", "money", "累计其他扣除"),
+            _col("cumulative_taxable", "money", "累计应纳税所得额"),
+            _col("cumulative_tax", "money", "累计应纳税额"),
+            _col("tax_withheld", "money", "本期应预扣税额"),
+            _col("net_pay", "money", "实发工资"),
+            _col("zero_declaration", "bool", "零申报"),
+            _col("status", "str", "状态"),
+            _col("journal_entry_no", "str", "凭证号"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+            _col("updated_at", "str", "更新时间"),
         ],
     },
     # 会计期间（月结/季结状态机，P0-3）

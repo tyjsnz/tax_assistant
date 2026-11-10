@@ -9,7 +9,7 @@ import streamlit as st
 
 from engine import current_quarter, deadline_status, format_date_cn, next_deadline, reminders
 from ledger.models import mask_client
-from ui.components import archive_api as AA, cache, charts, formatting as F, ledger_api, nav, theme, ui
+from ui.components import archive_api as AA, cache, charts, formatting as F, ledger_api, nav, payroll_api as PA, theme, ui
 
 
 def _load_dashboard() -> dict:
@@ -188,6 +188,57 @@ def _render_quick_entries() -> None:
         with column:
             if st.button(f"{icon} {label}", key=key, width="stretch", type="secondary"):
                 nav.goto(page)
+
+
+# =============================================================================
+# 本月工资与个税提醒（P1-B，可选卡片）
+# =============================================================================
+def _render_payroll_card() -> None:
+    """本月工资表 / 个税扣缴提醒卡片（无员工且无工资记录时不展示）。"""
+    try:
+        employees = PA.list_employees(status="在职")
+        month = PA.current_month_key()
+        rows = PA.list_payroll(month)
+    except Exception:  # noqa: BLE001 - 工资模块异常不影响驾驶舱
+        return
+    if not employees and not rows:
+        return
+    summary = PA.summarize_period(month)
+    paid_rows = [row for row in rows if str(row.get("employee_id")) != PA.ZERO_EMPLOYEE_ID]
+    if not rows:
+        status_text = "⬜ 未生成"
+    elif any(str(row.get("status")) == "草稿" for row in rows):
+        status_text = "📝 草稿待确认"
+    elif paid_rows and all(str(row.get("status")) == "已申报" for row in paid_rows):
+        status_text = "📤 已申报"
+    else:
+        status_text = "✅ 已确认"
+    ui.section("💰 本月工资与个税", f"{PA.month_label(month)} 工资表与个税扣缴进度。")
+    with st.container(border=True):
+        ui.metric_row(
+            [
+                {"label": "在职员工", "value": f"{len(employees)} 人"},
+                {"label": "工资表状态", "value": status_text},
+                {"label": "本期应预扣个税", "value": F.fmt_money(summary.get("total_tax"))},
+                {"label": "实发合计", "value": F.fmt_money(summary.get("total_net"))},
+            ],
+            columns=4,
+        )
+        if not rows:
+            st.warning(
+                f"{PA.month_label(month)} 尚未生成工资表：请到「员工与工资」生成工资表；"
+                "若本月未发工资，建议做零申报以保留减除费用额度。",
+                icon="💰",
+            )
+        elif any(str(row.get("status")) == "草稿" for row in rows):
+            st.info("工资表存在草稿行：请核对金额、重新计算个税并确认生成凭证。", icon="📝")
+        elif paid_rows and all(str(row.get("status")) == "已申报" for row in paid_rows):
+            st.success(f"{PA.month_label(month)} 工资表已申报完成。", icon="📤")
+        else:
+            st.info("工资表已确认，请在扣缴端完成申报后回到「员工与工资」标记已申报。", icon="✅")
+        if st.button("👥 去员工与工资", key="dash_go_payroll", width="content"):
+            nav.goto(nav.PAGE_PAYROLL)
+    theme.disclaimer()
 
 
 # =============================================================================
@@ -485,6 +536,7 @@ def render() -> None:
     theme.disclaimer()
 
     _render_closing_card()
+    _render_payroll_card()
 
     _render_reminders(data)
     theme.disclaimer()

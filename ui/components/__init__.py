@@ -12,6 +12,7 @@ __all__ = [
     "company_api",
     "formatting",
     "ledger_api",
+    "payroll_api",
     "runtime",
     "theme",
     "ui",

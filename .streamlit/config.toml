@@ -21,7 +21,7 @@ paddingTop = "2.25rem"
 paddingBottom = "2rem"
 headingFontWeights = [700, 650, 600, 600, 600, 600]
 # 指标卡数字适当缩小，避免 ¥841,584.14 这类金额被截断
-metricValueFontSize = "1.75rem"
+metricValueFontSize = "1.5rem"
 metricValueFontWeight = 700
 # 图表 / 表格品牌色（十色，税务蓝为主，辅以中性色）
 chartCategoricalColors = [

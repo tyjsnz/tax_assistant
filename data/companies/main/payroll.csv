@@ -1,0 +1,1 @@
+﻿id,period,employee_id,employee_name,gross_salary,bonus,allowance,social_insurance,housing_fund,special_deduction,other_deduction,cumulative_income,cumulative_basic_deduction,cumulative_social,cumulative_special,cumulative_other,cumulative_taxable,cumulative_tax,tax_withheld,net_pay,zero_declaration,status,journal_entry_no,note,created_at,updated_at

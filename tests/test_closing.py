@@ -1,7 +1,7 @@
 """月结/季结状态机 + 期间锁 + 快照测试（P0-3A）。
 
 覆盖 `docs/CONTRACTS_P0_3.md` 第 2.6 节：
-状态机（未结账→已结账→反结账→未结账）、未来期间拒绝、重复结账报错、9 项结账前检查、
+状态机（未结账→已结账→反结账→未结账）、未来期间拒绝、重复结账报错、结账前检查（含工资表状态）、
 损益结转凭证借贷平衡且科目正确、按期间过滤、快照可复现与篡改检测、反结账删除结转凭证、
 季度结账要求 3 个月已结账、期间锁在 income/expense/journal/rd/ingest.confirm_match 生效、
 锁不影响未结账期间、`list_periods` 派生数据正确。
@@ -17,7 +17,7 @@ import pytest
 
 import config
 import ledger
-from ledger import expense_ledger, income_ledger, journal, locks
+from ledger import employees, expense_ledger, income_ledger, journal, locks, payroll
 from ledger.store import read_log, table
 
 import closing
@@ -149,7 +149,7 @@ class TestPeriods:
         assert overview["status"] == "未结账"
         checklist = overview["checklist"]
         assert set(checklist) >= {"ok", "level", "total", "pass", "warning", "error"}
-        assert checklist["total"] == 9
+        assert checklist["total"] == 10
 
 
 # =============================================================================
@@ -267,6 +267,53 @@ class TestChecks:
         policy = next(check for check in report["checks"] if check["key"] == "policy_period")
         assert policy["status"] == "WARNING"
         assert "不在已验证政策区间" in policy["message"]
+
+
+class TestPayrollStatusCheck:
+    """closing.checks 增量：payroll_status（契约 P1-B §4）。"""
+
+    def test_pass_when_no_employees(self):
+        report = closing.pre_close_checks("2026-05")
+        check = next(item for item in report["checks"] if item["key"] == "payroll_status")
+        assert check["status"] == "PASS"
+        assert "无在职员工" in check["message"]
+
+    def test_warning_when_active_employees_without_payroll(self):
+        employees.add_employee({"name": "张三", "hire_date": "2026-01-01"})
+        report = closing.pre_close_checks("2026-05")
+        check = next(item for item in report["checks"] if item["key"] == "payroll_status")
+        assert check["status"] == "WARNING"
+        assert "无工资表" in check["message"]
+        assert "零申报" in check["fix_hint"]
+
+    def test_warning_when_draft_payroll_rows(self):
+        employee = employees.add_employee({"name": "李四", "hire_date": "2026-01-01"})
+        payroll.build_payroll("2026-05", employee_ids=[employee["id"]])
+        report = closing.pre_close_checks("2026-05")
+        check = next(item for item in report["checks"] if item["key"] == "payroll_status")
+        assert check["status"] == "WARNING"
+        assert "草稿工资" in check["message"]
+
+    def test_pass_when_payroll_confirmed_or_declared(self):
+        employee = employees.add_employee({"name": "王五", "hire_date": "2026-01-01"})
+        payroll.build_payroll("2026-05", employee_ids=[employee["id"]])
+        row = payroll.list_payroll("2026-05")[0]
+        payroll.update_payroll_row(row["id"], {"gross_salary": 10000.0})
+        payroll.recalc_period("2026-05")
+        payroll.confirm_period("2026-05")
+        report = closing.pre_close_checks("2026-05")
+        check = next(item for item in report["checks"] if item["key"] == "payroll_status")
+        assert check["status"] == "PASS"
+        assert "已全部确认/已申报" in check["message"]
+
+    def test_quarter_payroll_status_aggregates_months(self):
+        employee = employees.add_employee({"name": "赵六", "hire_date": "2026-01-01"})
+        for month in ("2026-01", "2026-02", "2026-03"):
+            payroll.build_payroll(month, employee_ids=[employee["id"]])
+        report = closing.pre_close_checks("2026Q1")
+        check = next(item for item in report["checks"] if item["key"] == "payroll_status")
+        assert check["status"] == "WARNING"
+        assert "草稿工资" in check["message"]
 
 
 # =============================================================================

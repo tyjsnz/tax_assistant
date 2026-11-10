@@ -1,0 +1,4 @@
+﻿id,employee_no,name,id_card_masked,phone,department,position,hire_date,leave_date,status,social_insurance_base,housing_fund_base,special_deduction_json,deduction_choice,is_deduction_qualified,note,created_at,updated_at
+EMP000001,E001,张三,,,研发部,工程师,2026-01-01,,在职,10000.00,10000.00,"{""children_education_children"":1}",累计预扣,是,,2026-11-10 13:41:39,
+EMP000002,E002,李四,,,运营部,运营专员,2026-01-01,,在职,7000.00,7000.00,"{""housing_rent"":""市辖区户籍人口>100万""}",累计预扣,是,,2026-11-10 13:41:39,
+EMP000003,E003,王五,,,研发部,测试工程师,2026-03-01,,在职,8000.00,8000.00,"{""elderly_care"":""独生""}",累计预扣,是,,2026-11-10 13:41:39,

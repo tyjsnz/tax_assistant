@@ -13,6 +13,7 @@ import streamlit as st
 
 PAGE_DASHBOARD = "🏠 首页驾驶舱"
 PAGE_LEDGER = "📒 台账管理"
+PAGE_PAYROLL = "👥 员工与工资"
 PAGE_INGEST = "📥 票据与流水"
 PAGE_CALCULATOR = "🧮 算税工作台"
 PAGE_FILING = "📋 申报填报"
@@ -25,6 +26,7 @@ PAGE_SETTINGS = "⚙️ 设置"
 PAGES: list[tuple[str, str]] = [
     (PAGE_DASHBOARD, "ui.views.dashboard"),
     (PAGE_LEDGER, "ui.views.ledger"),
+    (PAGE_PAYROLL, "ui.views.payroll"),
     (PAGE_INGEST, "ui.views.ingest"),
     (PAGE_CALCULATOR, "ui.views.calculator"),
     (PAGE_FILING, "ui.views.filing"),

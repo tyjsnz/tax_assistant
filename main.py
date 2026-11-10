@@ -9,6 +9,9 @@ Web 界面是主要使用方式（``.venv/bin/streamlit run ui/streamlit_app.py`
     python main.py demo
     python main.py ingest --invoices examples/invoices/*.xml --bank examples/bank/*.csv --confirm-score 90
     python main.py pool
+    python main.py employees
+    python main.py payroll --period 2026-11 --build --calc --confirm
+    python main.py iit-return --period 2026-11
     python main.py companies
     python main.py company-add --name "第二公司" --region yunnan-county-town --switch
     python main.py regions
@@ -130,6 +133,161 @@ def cmd_demo(args: argparse.Namespace) -> int:
     if extras:
         print("  " + "；".join(f"{key} = {value:,.2f}" for key, value in extras.items() if isinstance(value, (int, float))))
     print(f"\n提示：启动界面后可在「首页/台账」查看示例数据。{config.DISCLAIMER}")
+    return 0
+
+
+def _month_label(period: str) -> str:
+    try:
+        from engine import period_label
+
+        return period_label(period)
+    except Exception:  # noqa: BLE001
+        return period
+
+
+def cmd_employees(args: argparse.Namespace) -> int:
+    """列出员工档案。"""
+    from ledger import employees
+
+    rows = employees.list_employees(status=args.status, include_left=True)
+    if args.json:
+        _print_json({"employees": rows, "summary": employees.summarize_employees()})
+        return 0
+    print("\n👥 员工档案")
+    print("-" * 92)
+    print(f"  {'编号':<10}{'姓名':<12}{'工号':<10}{'部门':<12}{'状态':<6}{'入职日期':<12}{'社保基数':>10}{'公积金基数':>10}")
+    for row in rows:
+        print(
+            f"  {str(row.get('id')):<10}{str(row.get('name'))[:10]:<12}{str(row.get('employee_no') or '—')[:8]:<10}"
+            f"{str(row.get('department') or '—')[:10]:<12}{str(row.get('status') or ''):<6}"
+            f"{str(row.get('hire_date') or ''):<12}{float(row.get('social_insurance_base') or 0):>10,.0f}"
+            f"{float(row.get('housing_fund_base') or 0):>10,.0f}"
+        )
+    summary = employees.summarize_employees()
+    print("-" * 92)
+    print(f"  在职 {summary.get('active', 0)} 人 · 离职 {summary.get('left', 0)} 人 · "
+          f"社保基数合计 ¥{float(summary.get('total_social_base') or 0):,.2f}")
+    return 0
+
+
+def cmd_employee_add(args: argparse.Namespace) -> int:
+    """新增员工。"""
+    from ledger import employees
+
+    payload: dict[str, object] = {
+        "name": args.name,
+        "employee_no": args.no or "",
+        "department": args.department or "",
+        "position": args.position or "",
+        "hire_date": args.hire_date or "",
+        "social_insurance_base": args.social_base,
+        "housing_fund_base": args.housing_fund_base,
+    }
+    record = employees.add_employee(payload)
+    print(f"\n✅ 已新增员工：{record.get('name')}（{record.get('id')}）")
+    return 0
+
+
+def cmd_employee_update(args: argparse.Namespace) -> int:
+    """更新员工（含离职）。"""
+    from ledger import employees
+
+    patch: dict[str, object] = {}
+    for key, value in (
+        ("name", args.name), ("employee_no", args.no), ("department", args.department),
+        ("position", args.position), ("status", args.status),
+        ("social_insurance_base", args.social_base), ("housing_fund_base", args.housing_fund_base),
+    ):
+        if value not in (None, ""):
+            patch[key] = value
+    if not patch:
+        print("请至少提供一个要更新的字段。")
+        return 1
+    record = employees.update_employee(args.id, patch)
+    print(f"\n✅ 已更新员工：{record.get('name')}（{record.get('status')}）")
+    return 0
+
+
+def cmd_employee_delete(args: argparse.Namespace) -> int:
+    """删除员工（有工资记录时禁止，请改为离职）。"""
+    from ledger import employees
+
+    if not args.yes and not _confirm(f"确认删除员工 {args.id}？"):
+        print("  已取消（非交互环境请加 --yes）。")
+        return 1
+    employees.delete_employee(args.id)
+    print(f"\n🗑️ 已删除员工 {args.id}")
+    return 0
+
+
+def cmd_payroll(args: argparse.Namespace) -> int:
+    """查看/汇总某月工资表。"""
+    from ledger import payroll
+
+    period = args.period
+    if args.build:
+        result = payroll.build_payroll(period)
+        print(f"\n🧾 {_month_label(period)} 工资表已生成：新增 {result.get('created', 0)} 行")
+        for skipped in result.get("skipped") or []:
+            print(f"  - 跳过：{skipped}")
+    if args.calc:
+        result = payroll.recalc_period(period)
+        print(f"\n🧮 已重新计算 {len(result.get('rows') or [])} 行，本期个税合计 ¥{float(result.get('total_tax') or 0):,.2f}")
+        for warning in result.get("warnings") or []:
+            print(f"  ⚠️ {warning}")
+    if args.zero:
+        record = payroll.mark_zero_declaration(period)
+        print(f"\n0️⃣ 已生成/更新零申报记录：{record.get('id')}（{_month_label(period)}）")
+    if args.confirm:
+        result = payroll.confirm_period(period)
+        print(f"\n✅ {_month_label(period)} 工资表已确认，生成凭证 {len(result.get('entries') or [])} 张")
+        for entry in result.get("entries") or []:
+            print(f"  - {entry.get('entry_no')}（{entry.get('description')}）")
+    if args.declared:
+        result = payroll.mark_period_declared(period)
+        print(f"\n📤 已标记 {_month_label(period)} 个税申报完成（{result.get('count', 0)} 行）")
+
+    rows = payroll.list_payroll(period)
+    summary = payroll.summarize_period(period)
+    if args.json:
+        _print_json({"period": period, "rows": rows, "summary": summary})
+        return 0
+    print(f"\n💰 {_month_label(period)} 工资表（{len(rows)} 行）")
+    print("-" * 100)
+    print(f"  {'姓名':<10}{'应发':>10}{'社保':>9}{'公积金':>9}{'专项附加':>9}{'累计应税':>12}{'个税':>9}{'实发':>10}  状态")
+    for row in rows:
+        print(
+            f"  {str(row.get('employee_name'))[:8]:<10}{float(row.get('gross_salary') or 0):>10,.2f}"
+            f"{float(row.get('social_insurance') or 0):>9,.2f}{float(row.get('housing_fund') or 0):>9,.2f}"
+            f"{float(row.get('special_deduction') or 0):>9,.2f}{float(row.get('cumulative_taxable') or 0):>12,.2f}"
+            f"{float(row.get('tax_withheld') or 0):>9,.2f}{float(row.get('net_pay') or 0):>10,.2f}  {row.get('status')}"
+        )
+    print("-" * 100)
+    print(f"  人数 {summary.get('headcount', 0)} · 应发 ¥{float(summary.get('total_gross') or 0):,.2f} · "
+          f"个税 ¥{float(summary.get('total_tax') or 0):,.2f} · 实发 ¥{float(summary.get('total_net') or 0):,.2f} · "
+          f"已申报 {'是' if summary.get('declared') else '否'}")
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def cmd_iit_return(args: argparse.Namespace) -> int:
+    """生成个税扣缴申报辅助表（Excel）。"""
+    from filing import iit_return
+
+    bundle = iit_return.build_iit_return(args.period)
+    print(f"\n🧾 {_month_label(args.period)} 个人所得税扣缴申报辅助表")
+    print("-" * 80)
+    for section in bundle.get("sections") or []:
+        print(f"  【{section.get('title')}】")
+        for line in (section.get("lines") or [])[:12]:
+            print(f"    {line.get('line_no'):>2} {str(line.get('name'))[:34]:<36}{line.get('value'):>14,.2f}")
+    for check in bundle.get("checks") or []:
+        print(f"  {check.get('status')}: {check.get('message')}")
+    if args.out or True:
+        path = iit_return.export_iit_excel(bundle, args.out or None)
+        print(f"\n📦 已导出：{path}")
+    print(f"  ⚠️ 实际申报请在自然人电子税务局（扣缴端）完成，本表仅供核对。")
+    print(f"  {config.DISCLAIMER}")
     return 0
 
 
@@ -564,6 +722,52 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_regions = sub.add_parser("regions", help="列出地区预设（城建税税率）")
     p_regions.set_defaults(func=cmd_regions)
+
+    p_employees = sub.add_parser("employees", help="列出员工档案（个税扣缴）")
+    p_employees.add_argument("--status", default="在职", help="在职/离职，留空表示全部")
+    p_employees.add_argument("--json", action="store_true")
+    p_employees.set_defaults(func=cmd_employees)
+
+    p_emp_add = sub.add_parser("employee-add", help="新增员工")
+    p_emp_add.add_argument("--name", required=True)
+    p_emp_add.add_argument("--no", default="")
+    p_emp_add.add_argument("--department", default="")
+    p_emp_add.add_argument("--position", default="")
+    p_emp_add.add_argument("--hire-date", default="")
+    p_emp_add.add_argument("--social-base", type=float, default=0.0)
+    p_emp_add.add_argument("--housing-fund-base", type=float, default=0.0)
+    p_emp_add.set_defaults(func=cmd_employee_add)
+
+    p_emp_update = sub.add_parser("employee-update", help="更新员工（含离职）")
+    p_emp_update.add_argument("--id", required=True)
+    p_emp_update.add_argument("--name", default="")
+    p_emp_update.add_argument("--no", default="")
+    p_emp_update.add_argument("--department", default="")
+    p_emp_update.add_argument("--position", default="")
+    p_emp_update.add_argument("--status", default="", choices=["", "在职", "离职"])
+    p_emp_update.add_argument("--social-base", type=float, default=None)
+    p_emp_update.add_argument("--housing-fund-base", type=float, default=None)
+    p_emp_update.set_defaults(func=cmd_employee_update)
+
+    p_emp_delete = sub.add_parser("employee-delete", help="删除员工（有工资记录请改为离职）")
+    p_emp_delete.add_argument("--id", required=True)
+    p_emp_delete.add_argument("--yes", action="store_true")
+    p_emp_delete.set_defaults(func=cmd_employee_delete)
+
+    p_payroll = sub.add_parser("payroll", help="月度工资表：生成/计算/确认/零申报/查看")
+    p_payroll.add_argument("--period", required=True, help="月份，如 2026-11")
+    p_payroll.add_argument("--build", action="store_true", help="为在职员工生成工资表草稿")
+    p_payroll.add_argument("--calc", action="store_true", help="按累计预扣法重新计算个税")
+    p_payroll.add_argument("--confirm", action="store_true", help="确认并生成工资凭证")
+    p_payroll.add_argument("--declared", action="store_true", help="标记个税已在扣缴端申报")
+    p_payroll.add_argument("--zero", action="store_true", help="无工资月份零申报")
+    p_payroll.add_argument("--json", action="store_true")
+    p_payroll.set_defaults(func=cmd_payroll)
+
+    p_iit = sub.add_parser("iit-return", help="生成个税扣缴申报辅助表（Excel）")
+    p_iit.add_argument("--period", required=True, help="月份，如 2026-11")
+    p_iit.add_argument("--out", default=None, help="导出路径")
+    p_iit.set_defaults(func=cmd_iit_return)
 
     p_periods = sub.add_parser("periods", help="查看会计期间结账状态")
     p_periods.add_argument("--limit", type=int, default=12)

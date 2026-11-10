@@ -7,6 +7,17 @@
 from __future__ import annotations
 
 from engine.corporate_tax import calc_cit_prepay, calc_corp_tax
+from engine.iit import (
+    BASIC_DEDUCTION_PER_MONTH,
+    IIT_RATE_TABLE,
+    IIT_SOURCES,
+    ZERO_DECLARATION_NOTE,
+    calc_iit_withholding,
+    calc_special_deduction,
+    get_rate_table as get_iit_rate_table,
+    get_special_deduction_standards,
+    get_iit_sources,
+)
 from engine.money import (
     clamp,
     dec,
@@ -66,6 +77,15 @@ __all__ = [
     "calc_vat",
     "calc_corp_tax",
     "calc_cit_prepay",
+    "calc_iit_withholding",
+    "calc_special_deduction",
+    "get_iit_rate_table",
+    "get_special_deduction_standards",
+    "get_iit_sources",
+    "IIT_SOURCES",
+    "IIT_RATE_TABLE",
+    "BASIC_DEDUCTION_PER_MONTH",
+    "ZERO_DECLARATION_NOTE",
     "calc_rd_deduction",
     "aggregate_rd_expenses",
     "calc_stamp_tax",

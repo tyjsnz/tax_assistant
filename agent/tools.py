@@ -1,4 +1,4 @@
-"""Agent 工具集：供 DeepSeek function calling 调用的 13 个固定工具。
+"""Agent 工具集：供 DeepSeek function calling 调用的 14 个固定工具。
 
 核心原则
 --------
@@ -22,13 +22,14 @@ from engine.money import pct, round2, yuan
 
 DISCLAIMER = config.DISCLAIMER
 
-#: 13 个固定工具名称
+#: 14 个固定工具名称
 TOOL_NAMES: list[str] = [
     "calc_vat",
     "calc_corp_tax",
     "calc_cit_prepay",
     "calc_rd_deduction",
     "calc_stamp_tax",
+    "calc_iit",
     "add_income",
     "add_expense",
     "query_ledger",
@@ -370,6 +371,79 @@ def _tool_calc_stamp_tax(args: dict[str, Any]) -> dict[str, Any]:
             f"金额 ¥{yuan(item.get('amount'))} × {item.get('rate_text')} → ¥{yuan(item.get('tax_payable'))}"
         )
     lines.append("- 政策依据：《中华人民共和国印花税法》；财政部 税务总局公告2023年第12号")
+    lines.append(DISCLAIMER)
+    return _ok(result, "\n".join(lines))
+
+
+def _tool_calc_iit(args: dict[str, Any]) -> dict[str, Any]:
+    """工资薪金个人所得税（累计预扣法）工具实现。"""
+    income = _need_float(args, "cumulative_income", "本年累计工资薪金收入")
+    months_raw = args.get("months_declared")
+    if months_raw in (None, ""):
+        raise ValueError(
+            "缺少必填参数 months_declared（本年已实际申报月份数，0—12）。"
+            "2026 年起减除费用按实际申报月份累计，请提供已申报月份数，例如 months_declared=11；"
+            "零工资月份也建议零申报以保留额度。"
+        )
+    try:
+        months = int(float(str(months_raw).replace(",", "")))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"months_declared「{months_raw}」不是有效整数，请提供 0—12 之间的已申报月份数。"
+        ) from exc
+    period = _period(args, default=engine.current_month())
+    result = _disclaimer(
+        engine.calc_iit_withholding(
+            income,
+            months_declared=months,
+            cumulative_social_insurance=_opt_float(args, "cumulative_social_insurance", 0.0),
+            cumulative_housing_fund=_opt_float(args, "cumulative_housing_fund", 0.0),
+            cumulative_special_additional=_opt_float(args, "cumulative_special_additional", 0.0),
+            cumulative_other_deduction=_opt_float(args, "cumulative_other_deduction", 0.0),
+            cumulative_tax_withheld=_opt_float(args, "cumulative_tax_withheld", 0.0),
+            one_time_basic_deduction=_to_bool(args.get("one_time_basic_deduction"), False),
+            period=period,
+        )
+    )
+    _safe_calc_log(
+        "iit_withholding",
+        period,
+        {
+            "cumulative_income": income,
+            "months_declared": months,
+            "cumulative_tax_withheld": result.get("cumulative_tax_withheld"),
+        },
+        result,
+    )
+
+    if result.get("one_time_basic_deduction"):
+        basic_note = "一次性扣除 60,000 元"
+    else:
+        basic_note = f"5,000 元/月 × 已申报 {result.get('months_declared')} 个月"
+    lines = [
+        f"【个人所得税（工资薪金累计预扣）· {_period_label(period)}】",
+        f"- 本年累计收入：¥{yuan(result.get('cumulative_income'))}",
+        f"- 累计减除费用：¥{yuan(result.get('cumulative_basic_deduction'))}（{basic_note}）",
+        f"- 累计专项扣除（社保+公积金）：¥{yuan((result.get('cumulative_social_insurance') or 0) + (result.get('cumulative_housing_fund') or 0))}；"
+        f"累计专项附加扣除：¥{yuan(result.get('cumulative_special_additional'))}；"
+        f"累计其他扣除：¥{yuan(result.get('cumulative_other_deduction'))}",
+        f"- 累计应纳税所得额：¥{yuan(result.get('cumulative_taxable_income'))}",
+        f"- 适用预扣率：{pct(result.get('applicable_rate'))}，"
+        f"速算扣除数：¥{yuan(result.get('quick_deduction'))}；"
+        f"累计应纳税额：¥{yuan(result.get('cumulative_tax'))}",
+        f"- 累计已预扣：¥{yuan(result.get('cumulative_tax_withheld'))}；"
+        f"**本期应预扣预缴：¥{yuan(result.get('tax_payable'))}**",
+        f"- 说明：{result.get('note', '')}",
+        "- 政策依据：",
+    ]
+    for source in result.get("policy_sources") or []:
+        lines.append(
+            f"  · {source.get('title')}（{source.get('source')}，{source.get('effective_date')} 起）"
+        )
+    for warning in result.get("warnings") or []:
+        lines.append(f"⚠️ {warning}")
+    if result.get("zero_declaration_note"):
+        lines.append(f"⚠️ {result['zero_declaration_note']}")
     lines.append(DISCLAIMER)
     return _ok(result, "\n".join(lines))
 
@@ -933,6 +1007,30 @@ _TOOL_DEFS: list[dict[str, Any]] = [
         "parameters": _schema({"period": _PERIOD}),
     },
     {
+        "name": "calc_iit",
+        "description": (
+            "计算工资薪金个人所得税本期应预扣预缴税额（居民个人累计预扣法）："
+            "5,000 元/月基本减除费用、专项扣除（三险一金）、专项附加扣除、预扣率表。"
+        ),
+        "parameters": _schema(
+            {
+                "cumulative_income": {**_MONEY, "description": "本年累计工资薪金收入（元，含本期）"},
+                "months_declared": {
+                    "type": "integer",
+                    "description": "本年已实际申报月份数（0—12）；2026 年起减除费用按实际申报月份累计，零工资月份也建议零申报",
+                },
+                "cumulative_social_insurance": {**_MONEY, "description": "累计专项扣除：社保（三险）个人部分（元）"},
+                "cumulative_housing_fund": {**_MONEY, "description": "累计专项扣除：住房公积金个人部分（元）"},
+                "cumulative_special_additional": {**_MONEY, "description": "累计专项附加扣除（元）"},
+                "cumulative_other_deduction": {**_MONEY, "description": "累计其他扣除（企业年金、商业健康险、税延养老等，元）"},
+                "cumulative_tax_withheld": {**_MONEY, "description": "本年累计已预扣预缴税额（元）"},
+                "one_time_basic_deduction": {"type": "boolean", "description": "是否选择一次性扣除 60,000 元（仅符合条件的员工）"},
+                "period": {"type": "string", "description": "税款所属月份，如 2026-11；缺省为当前月份"},
+            },
+            ["cumulative_income", "months_declared"],
+        ),
+    },
+    {
         "name": "add_income",
         "description": "记一笔收入到收入台账，并自动生成会计分录。",
         "parameters": _schema(
@@ -1051,6 +1149,7 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "calc_cit_prepay": _tool_calc_cit_prepay,
     "calc_rd_deduction": _tool_calc_rd_deduction,
     "calc_stamp_tax": _tool_calc_stamp_tax,
+    "calc_iit": _tool_calc_iit,
     "add_income": _tool_add_income,
     "add_expense": _tool_add_expense,
     "query_ledger": _tool_query_ledger,

@@ -14,6 +14,7 @@ no_zero_vouchers       无 0 元凭证                                 WARNING
 no_unmatched_ingest    无待匹配发票/流水/待确认匹配建议            WARNING
 invoice_duplicates     期间内发票号码无重复                        ERROR
 policy_period          期间在已验证政策区间                        WARNING
+payroll_status         工资表状态（无工资/草稿/已确认）              WARNING
 =====================  ==========================================  ========
 
 返回结构见 :func:`pre_close_checks`；``blocking`` 为 ERROR 列表，``warnings`` 为 WARNING 列表。
@@ -21,7 +22,7 @@ policy_period          期间在已验证政策区间                        WAR
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import config
@@ -45,6 +46,7 @@ CHECK_KEYS: tuple[str, ...] = (
     "no_unmatched_ingest",
     "invoice_duplicates",
     "policy_period",
+    "payroll_status",
 )
 
 CHECK_NAMES: dict[str, str] = {
@@ -57,6 +59,7 @@ CHECK_NAMES: dict[str, str] = {
     "no_unmatched_ingest": "无待匹配票据/流水",
     "invoice_duplicates": "期间内发票无重复",
     "policy_period": "期间在已验证政策区间",
+    "payroll_status": "工资表与个税状态",
 }
 
 
@@ -270,6 +273,61 @@ def _check_invoice_duplicates(period: str) -> dict[str, Any]:
     return _check("invoice_duplicates", "PASS", "期间内发票号码无重复。")
 
 
+def _period_months(period: str) -> list[str]:
+    """把期间展开为月份列表（月返回自身；季返回 3 个月）。"""
+    if periods.period_type_of(period) == "月":
+        return [period]
+    start, end = period_range(period)
+    months: list[str] = []
+    cursor = start
+    while cursor <= end:
+        months.append(f"{cursor.year}-{cursor.month:02d}")
+        cursor = date(cursor.year + (cursor.month == 12), cursor.month % 12 + 1, 1)
+    return months
+
+
+def _check_payroll_status(period: str) -> dict[str, Any]:
+    """工资表状态检查：无工资但有在职 → WARNING；存在草稿行 → WARNING；已确认/已申报 → PASS。"""
+    try:
+        from ledger import employees as employees_module
+        from ledger import payroll as payroll_module
+
+        rows: list[dict[str, Any]] = []
+        for month in _period_months(period):
+            rows.extend(payroll_module.list_payroll(month))
+        active_employees = employees_module.list_employees("在职")
+    except (ValueError, KeyError) as exc:
+        return _check(
+            "payroll_status",
+            "WARNING",
+            f"工资表检查执行失败：{exc}",
+            "请检查「员工与工资」数据是否完整后再结账。",
+        )
+    if not rows:
+        if not active_employees:
+            return _check("payroll_status", "PASS", "期间无工资表且公司无在职员工，无需工资检查。")
+        return _check(
+            "payroll_status",
+            "WARNING",
+            f"期间 {period} 无工资表，但公司有 {len(active_employees)} 名在职员工。",
+            "请先在「员工与工资」生成工资表并确认，或无工资月份做零申报后再结账。",
+        )
+    drafts = [row for row in rows if str(row.get("status") or "") == "草稿"]
+    if drafts:
+        names = "、".join(str(row.get("employee_name") or row.get("employee_id")) for row in drafts[:5])
+        return _check(
+            "payroll_status",
+            "WARNING",
+            f"期间存在 {len(drafts)} 行草稿工资（{names}），尚未确认。",
+            "请先确认工资表并生成凭证（无工资月份可零申报），再结账。",
+        )
+    return _check(
+        "payroll_status",
+        "PASS",
+        f"期间工资表已全部确认/已申报（共 {len(rows)} 行）。",
+    )
+
+
 def _check_policy_period(period: str) -> dict[str, Any]:
     start, _ = period_range(period)
     if VERIFIED_FROM <= start <= VERIFIED_TO:
@@ -291,7 +349,7 @@ def _check_policy_period(period: str) -> dict[str, Any]:
 # 对外接口
 # =============================================================================
 def pre_close_checks(period: Any) -> dict[str, Any]:
-    """执行结账前 9 项检查，返回汇总报告（含 ``blocking`` / ``warnings``）。
+    """执行结账前 10 项检查，返回汇总报告（含 ``blocking`` / ``warnings``）。
 
     返回结构::
 
@@ -309,6 +367,7 @@ def pre_close_checks(period: Any) -> dict[str, Any]:
         _check_no_unmatched_ingest(text),
         _check_invoice_duplicates(text),
         _check_policy_period(text),
+        _check_payroll_status(text),
     ]
     blocking = [check for check in checks if check["status"] == "ERROR"]
     warnings = [check for check in checks if check["status"] == "WARNING"]

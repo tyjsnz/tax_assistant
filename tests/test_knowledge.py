@@ -128,6 +128,40 @@ def test_policy_sources_and_key_figures():
     assert "小型微利企业" in all_text
 
 
+def test_iit_policy_document_current():
+    """个税扣缴政策文档已更新为现行口径（累计预扣法 / 2026 扣缴端 / 2023 专项附加标准）。"""
+    policy = get_policy("其他税费/个人所得税扣缴")
+    assert policy is not None
+    assert policy["last_verified"] == "2026-11-10"
+    assert "国家税务总局公告2018年第61号" in policy["source"]
+    assert "2023" in policy["source"]
+
+    content = policy["content"]
+    for keyword in (
+        "累计预扣法",
+        "预扣率",
+        "5,000 元/月",
+        "专项附加扣除",
+        "零申报",
+        "2026",
+        "60,000",
+        "子女教育",
+        "赡养老人",
+        "大病医疗",
+        "扣缴端",
+    ):
+        assert keyword in content, f"个税政策文档缺少要点：{keyword}"
+    assert "主管税务机关口径为准" in content or "以扣缴端口径为准" in content
+    assert "适用条件" in content and "注意事项" in content
+
+
+def test_search_iit_policy():
+    hits = search("个税 累计预扣 专项附加扣除 零申报", top_k=3)
+    assert hits
+    assert hits[0]["id"] == "其他税费/个人所得税扣缴"
+    assert hits[0]["category"] == "其他税费"
+
+
 def test_list_get_and_categories():
     assert "增值税" in categories()
     assert len(list_policies("企业所得税")) >= 2

@@ -268,6 +268,45 @@ def _income_amount_hint() -> str:
     )
 
 
+def _iit_reply(data: dict[str, Any]) -> str:
+    """用自然语言解释工资薪金个税累计预扣结果（数字全部来自 engine）。"""
+    period = data.get("period") or ""
+    label = engine.period_label(period) if period else "本期"
+    if data.get("one_time_basic_deduction"):
+        basic_note = "按 60,000 元一次性扣除"
+    else:
+        basic_note = f"5,000 元/月 × 已实际申报 {data.get('months_declared')} 个月"
+    social_total = (data.get("cumulative_social_insurance") or 0) + (data.get("cumulative_housing_fund") or 0)
+    lines = [
+        f"{label}工资薪金个人所得税（累计预扣法）：",
+        "",
+        f"- 本年累计收入 ¥{yuan(data.get('cumulative_income'))}；",
+        f"- 累计减除费用 ¥{yuan(data.get('cumulative_basic_deduction'))}（{basic_note}）；",
+        f"- 累计专项扣除（三险一金）¥{yuan(social_total)}，"
+        f"累计专项附加扣除 ¥{yuan(data.get('cumulative_special_additional'))}，"
+        f"累计其他扣除 ¥{yuan(data.get('cumulative_other_deduction'))}；",
+        f"- 累计应纳税所得额 ¥{yuan(data.get('cumulative_taxable_income'))}，"
+        f"适用预扣率 {pct(data.get('applicable_rate'))}、速算扣除数 ¥{yuan(data.get('quick_deduction'))}；",
+        f"- 累计应纳税额 ¥{yuan(data.get('cumulative_tax'))}，"
+        f"累计已预扣 ¥{yuan(data.get('cumulative_tax_withheld'))}；",
+        f"- **本期应预扣预缴 ¥{yuan(data.get('tax_payable'))}**。",
+    ]
+    if data.get("note"):
+        lines.extend(["", f"说明：{data['note']}"])
+    sources = data.get("policy_sources") or []
+    if sources:
+        lines.extend(["", "📌 政策依据："])
+        for source in sources[:4]:
+            lines.append(
+                f"- {source.get('source')}（{source.get('effective_date')} 起）：{source.get('title')}"
+            )
+    for warning in (data.get("warnings") or [])[:3]:
+        lines.append(f"⚠️ {warning}")
+    if data.get("zero_declaration_note"):
+        lines.extend(["", f"⚠️ {data['zero_declaration_note']}"])
+    return "\n".join(lines)
+
+
 def _compose_local(intent: str, text: str, route: dict[str, Any], result: dict[str, Any] | None) -> str:
     """根据意图与工具结果组织本地中文回复。"""
     arguments = route.get("arguments") or {}
@@ -298,6 +337,26 @@ def _compose_local(intent: str, text: str, route: dict[str, Any], result: dict[s
         if result and result.get("error"):
             return f"计算失败：{result['error']}"
         return "请提供计算的期间或金额信息，我会调用确定性算税引擎计算。"
+
+    if intent == "iit":
+        if result and result.get("ok"):
+            return _iit_reply(result["data"])
+        if result and result.get("error"):
+            if "缺少必填参数" in result["error"]:
+                return (
+                    "个税（工资薪金累计预扣法）需要两个关键数据：\n"
+                    "1. **本年累计工资薪金收入**（元），例如「月薪 1.5 万」；\n"
+                    "2. **本年已实际申报月份数**（0—12），例如「今年已申报 11 个月」。\n"
+                    "也可以把五险一金、专项附加扣除、已预扣税额一起告诉我，例如：\n"
+                    "「月薪 1.5 万，五险一金每月 3000，专项附加扣除每月 2000，今年已申报 11 个月，个税怎么算」。\n\n"
+                    "⚠️ 2026 年扣缴端升级后，5,000 元/月减除费用按**实际申报月份**累计："
+                    "未申报的月份额度作废、不再补发；即使当月未发工资，也建议做零申报（收入填 0）以保留额度。"
+                )
+            return f"个税计算失败：{result['error']}"
+        return (
+            "请告诉我本年累计工资收入与已实际申报月份数，我会用累计预扣法计算本期应预扣个税；"
+            "例如：「月薪 1.5 万，今年已申报 11 个月，个税怎么算」。"
+        )
 
     if intent in ("income", "expense"):
         if result and result.get("ok"):

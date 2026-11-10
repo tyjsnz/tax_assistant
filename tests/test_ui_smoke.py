@@ -20,6 +20,7 @@ APP_PATH = str(Path(__file__).resolve().parents[1] / "ui" / "streamlit_app.py")
 PAGES = [
     "🏠 首页驾驶舱",
     "📒 台账管理",
+    "👥 员工与工资",
     "📥 票据与流水",
     "🧮 算税工作台",
     "📋 申报填报",
@@ -48,7 +49,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 9 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 10 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     radio = at.radio(key="nav")
@@ -361,3 +362,130 @@ def test_settings_create_company_via_form() -> None:
     created = next((item for item in companies if item.get("name") == "UI 新建测试公司"), None)
     assert created is not None
     assert created.get("region_id") == "generic-county-town"
+
+
+def test_payroll_page_renders_empty() -> None:
+    """员工与工资：空数据下三个 tab 与关键按钮正常渲染。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("👥 员工与工资").run()
+    _assert_clean(at, "员工与工资（空数据）")
+
+    tab_labels = [tab.label for tab in at.tabs]
+    assert any("员工管理" in label for label in tab_labels)
+    assert any("月度工资表" in label for label in tab_labels)
+    assert any("扣缴申报辅助表" in label for label in tab_labels)
+
+    labels = [button.label for button in at.button]
+    assert any("保存员工" in label for label in labels), "应有新增员工表单"
+    assert any("生成工资表" in label for label in labels), "应有「生成工资表」按钮"
+    assert any("重新计算个税" in label for label in labels), "应有「重新计算个税」按钮"
+    assert any("确认并生成凭证" in label for label in labels), "应有「确认并生成凭证」按钮"
+    assert any("本期零申报" in label for label in labels), "应有「本期零申报」按钮"
+    assert any("标记已申报" in label for label in labels), "应有「标记已申报」按钮"
+    assert any("生成辅助表" in label for label in labels), "应有「生成辅助表」按钮"
+    assert any("生成 Excel" in label for label in labels), "应有「生成 Excel」按钮"
+    html_text = "\n".join(element.value for element in at.html)
+    assert "仅供参考" in html_text, "页面底部必须展示免责声明"
+
+
+def test_payroll_employee_create_and_payroll_flow() -> None:
+    """员工建档 → 生成工资表 → 重算个税 → 确认凭证 → 标记已申报。"""
+    pytest.importorskip("ledger.employees")
+    pytest.importorskip("ledger.payroll")
+    import ledger
+    from ui.components import payroll_api as PA
+
+    at = _new_app()
+    at.radio(key="nav").set_value("👥 员工与工资").run()
+    _assert_clean(at, "员工与工资（建档前）")
+
+    at.text_input(key="payroll_new_name").set_value("张三")
+    at.text_input(key="payroll_new_no").set_value("E001")
+    at.text_input(key="payroll_new_department").set_value("技术部")
+    at.number_input(key="payroll_new_social").set_value(8000.0)
+    at.number_input(key="payroll_new_fund").set_value(8000.0)
+    [button for button in at.button if button.label == "保存员工"][0].click().run()
+    _assert_clean(at, "员工与工资（建档后）")
+    assert ledger.table("employees").count() == 1, "员工建档后应有 1 条员工记录"
+
+    month = PA.current_month_key()
+    build_buttons = [button for button in at.button if button.label == "🧮 生成工资表"]
+    if build_buttons and not build_buttons[0].disabled:
+        build_buttons[0].click().run()
+        _assert_clean(at, "员工与工资（生成工资表后）")
+    assert ledger.table("payroll").count() >= 1, "生成工资表后应有工资记录"
+
+    # 数据编辑器无法被 AppTest 驱动：用后端接口准备非零工资数据后再走 UI 确认流程
+    from ui.components import payroll_api as payroll_helper
+
+    for row in ledger.table("payroll").read():
+        payroll_helper.update_payroll_row(
+            row["id"],
+            {
+                "gross_salary": 12000.0,
+                "social_insurance": 800.0,
+                "housing_fund": 800.0,
+                "special_deduction": 0.0,
+                "other_deduction": 0.0,
+            },
+        )
+    payroll_helper.recalc_period(month)
+    at.run()
+    _assert_clean(at, "员工与工资（准备工资数据后）")
+
+    recalc = [button for button in at.button if "重新计算个税" in button.label]
+    if recalc and not recalc[0].disabled:
+        recalc[0].click().run()
+        _assert_clean(at, "员工与工资（重算个税后）")
+
+    confirm = [button for button in at.button if "确认并生成凭证" in button.label]
+    if confirm and not confirm[0].disabled:
+        confirm[0].click().run()
+        _assert_clean(at, "员工与工资（确认工资表后）")
+        assert ledger.table("journal_entries").count() >= 1, "确认工资表后应生成凭证"
+
+    declare = [button for button in at.button if "标记已申报" in button.label]
+    if declare and not declare[0].disabled:
+        declare[0].click().run()
+        _assert_clean(at, "员工与工资（标记已申报后）")
+        payroll_rows = ledger.table("payroll").read()
+        assert payroll_rows and all(str(row.get("status")) == "已申报" for row in payroll_rows)
+
+
+def test_payroll_zero_declaration() -> None:
+    """无工资月份点击「本期零申报」不崩溃，并插入零申报记录。"""
+    pytest.importorskip("ledger.payroll")
+    import ledger
+
+    at = _new_app()
+    at.radio(key="nav").set_value("👥 员工与工资").run()
+    zero_buttons = [button for button in at.button if "本期零申报" in button.label]
+    assert zero_buttons, "应提供「本期零申报」按钮"
+    if zero_buttons[0].disabled:
+        pytest.skip("零申报后端未就绪（按钮禁用）")
+    zero_buttons[0].click().run()
+    _assert_clean(at, "员工与工资（零申报后）")
+    rows = ledger.table("payroll").read()
+    assert any(str(row.get("employee_id")) == "ZERO" for row in rows), "零申报应写入 ZERO 记录"
+
+
+def test_payroll_iit_return_and_export() -> None:
+    """扣缴申报辅助表：生成辅助表与导出 Excel 按钮可点击且不异常。"""
+    pytest.importorskip("filing.iit_return")
+    from ui.components import payroll_api as PA
+
+    at = _new_app()
+    at.radio(key="nav").set_value("👥 员工与工资").run()
+    build = [button for button in at.button if button.label == "📋 生成辅助表"]
+    assert build, "应有「生成辅助表」按钮"
+    if build[0].disabled:
+        pytest.skip("辅助表后端未就绪（按钮禁用）")
+    build[0].click().run()
+    _assert_clean(at, "员工与工资（生成辅助表后）")
+
+    export = [button for button in at.button if button.label == "📊 生成 Excel"]
+    assert export, "应有「生成 Excel」按钮"
+    if not export[0].disabled:
+        export[0].click().run()
+        _assert_clean(at, "员工与工资（导出 Excel 后）")
+        assert at.download_button, "导出后应出现下载按钮"

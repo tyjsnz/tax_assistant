@@ -20,6 +20,7 @@ from typing import Any
 
 import config
 import engine
+from engine.money import round2
 
 # =============================================================================
 # 意图定义
@@ -30,6 +31,7 @@ INTENTS: dict[str, str] = {
     "calc_cit_prepay": "企业所得税季度预缴",
     "calc_rd": "研发费用归集与加计扣除",
     "calc_stamp_tax": "印花税计算",
+    "iit": "个人所得税扣缴（工资薪金累计预扣）",
     "income": "收入记账",
     "expense": "费用记账",
     "journal": "会计分录生成",
@@ -81,6 +83,15 @@ _RULES: list[tuple[str, list[str], list[str]]] = [
          r"规定.{0,4}(?:是|怎么)"],
         ["政策", "优惠", "免征", "免税", "依据", "文号", "公告", "小规模纳税人", "最新政策",
          "税率", "征收率", "额度", "比例"],
+    ),
+    (
+        "iit",
+        [r"工资.{0,8}(?:个税|所得税|预扣|怎么算|多少税|扣多少)",
+         r"(?:个税|个人所得税|工资薪金|薪金).{0,8}(?:怎么算|如何算|多少|计算|预扣|申报)",
+         r"个税怎么算", r"专项附加扣除", r"减除费用", r"五险一金",
+         r"预扣(?:预缴|率)?", r"累计预扣", r"发(?:放)?工资", r"工资(?:表|单|发放)"],
+        ["个税", "个人所得税", "工资", "薪金", "工资薪金", "专项附加扣除", "专项附加",
+         "减除费用", "预扣", "预扣率", "累计预扣", "五险一金", "个税怎么算"],
     ),
     (
         "calc_vat",
@@ -335,6 +346,11 @@ def extract_period(text: str) -> str:
     if re.search(r"下\s*(?:个|一)?\s*月", raw):
         return _shift_period(engine.current_month(_today()), 1)
 
+    # 无年份的月份表述（如「11月工资」「3月的个税」）；「3个月」因中间有「个」不会误判
+    match = re.search(r"(?<!\d)(1[0-2]|[1-9])\s*月", raw)
+    if match:
+        return f"{_today().year}-{int(match.group(1)):02d}"
+
     match = re.search(r"(\d{4})\s*年\s*(?:度|全年|汇算)", raw)
     if match:
         return match.group(1)
@@ -372,6 +388,40 @@ def extract_date(text: str) -> str:
     if re.search(r"后天", raw):
         return (today + timedelta(days=2)).isoformat()
     return ""
+
+
+#: 「本年已实际申报月份数」常见表述（个税累计预扣法关键入参）
+_MONTHS_DECLARED_PATTERNS = (
+    r"累计\s*(?:申报|预扣|发放)?\s*(\d{1,2})\s*个?\s*月",
+    r"(?:已|已经)\s*(?:申报|预扣|发放|发)\s*(?:了)?\s*(\d{1,2})\s*个?\s*月",
+    r"第\s*(\d{1,2})\s*个?\s*月",
+    r"前\s*(\d{1,2})\s*个?\s*月",
+    r"共\s*(\d{1,2})\s*个?\s*月",
+    r"1\s*[-~至到]\s*(\d{1,2})\s*月",
+    r"(\d{1,2})\s*个\s*月(?:的)?\s*(?:工资|收入|申报|预扣|累计|数据)",
+)
+
+
+def extract_months_declared(text: str) -> int | None:
+    """抽取「本年已实际申报月份数」（0—12，个税累计预扣法用）。
+
+    2026 年扣缴端升级后，5,000 元/月减除费用按**实际申报月份**累计，
+    因此「已申报 11 个月」「累计 3 个月」「1—3 月」等表述需要识别为月份数。
+    """
+    raw = (text or "").translate(_FULLWIDTH)
+    for pattern in _MONTHS_DECLARED_PATTERNS:
+        match = re.search(pattern, raw)
+        if match:
+            value = int(match.group(1))
+            if 0 <= value <= 12:
+                return value
+    # 兜底：单独的「N 个月」（如「干了 3 个月」）
+    match = re.search(r"(?<!\d)(\d{1,2})\s*个\s*月", raw)
+    if match:
+        value = int(match.group(1))
+        if 0 <= value <= 12:
+            return value
+    return None
 
 
 # =============================================================================
@@ -449,6 +499,7 @@ def _keywords(text: str) -> list[str]:
         "加计扣除", "免税", "免征", "减半", "小规模纳税人", "小型微利企业", "汇算清缴", "预缴",
         "申报", "红利账单", "专票", "普票", "未开票", "分录", "凭证", "台账", "截止日",
         "技术合同", "技术转让", "工资", "社保", "房租", "差旅", "办公", "折旧",
+        "个税", "个人所得税", "工资薪金", "专项附加扣除", "减除费用", "预扣", "累计预扣", "五险一金",
     )
     raw = text or ""
     return [word for word in lexicon if word in raw]
@@ -467,8 +518,8 @@ def extract_entities(text: str) -> dict[str, Any]:
     返回
     ----
     ``{"amounts": [float], "amount": float|None, "date": "YYYY-MM-DD", "period": "2026Q1",
-       "client": str, "invoice_type": str, "category": str, "is_rd_related": bool,
-       "keywords": [str]}``
+       "months_declared": int|None, "client": str, "invoice_type": str, "category": str,
+       "is_rd_related": bool, "keywords": [str]}``
     """
     raw = text or ""
     amounts = extract_amounts(raw)
@@ -477,6 +528,7 @@ def extract_entities(text: str) -> dict[str, Any]:
         "amount": amounts[0] if amounts else None,
         "date": extract_date(raw),
         "period": extract_period(raw),
+        "months_declared": extract_months_declared(raw),
         "client": extract_client(raw),
         "invoice_type": _invoice_type(raw),
         "category": extract_category(raw),
@@ -676,6 +728,91 @@ def _calendar_days(text: str) -> int:
     return 60
 
 
+#: 金额 + 可选单位（万/千/亿）
+_AMOUNT_UNIT = r"(\d+(?:\.\d+)?)\s*(亿|万|千)?"
+
+
+def _amount_near_keyword(text: str, keyword_pattern: str) -> float | None:
+    """在关键词前 / 后 8 个字符内抽取一个金额（元），找不到返回 None。"""
+    raw = (text or "").translate(_FULLWIDTH)
+    for pattern in (
+        rf"(?:{keyword_pattern})[^\d]{{0,8}}{_AMOUNT_UNIT}\s*(?:元|块)?",
+        rf"{_AMOUNT_UNIT}\s*(?:元|块)?[^\d]{{0,6}}(?:{keyword_pattern})",
+    ):
+        match = re.search(pattern, raw)
+        if not match:
+            continue
+        try:
+            value = float(match.group(1).replace(",", ""))
+        except (TypeError, ValueError):
+            continue
+        unit = match.group(2)
+        if unit == "亿":
+            value *= 100_000_000
+        elif unit == "万":
+            value *= 10_000
+        elif unit == "千":
+            value *= 1_000
+        if value > 0:
+            return round(value, 2)
+    return None
+
+
+def _iit_arguments(text: str, entities: dict[str, Any]) -> dict[str, Any]:
+    """把个税相关表述转换为 ``calc_iit`` 工具参数（累计预扣法口径）。
+
+    规则要点：
+    * 收入：优先取「月薪 / 工资 / 收入 / 应发」附近的金额；若为「月薪 × 已申报月份」则换算为累计收入，
+      明确写「累计收入」时直接作为累计收入；
+    * 月份：``months_declared`` 未提及默认 1（单月），提及「已申报 N 个月 / 累计 N 个月 / 1—N 月」时取 N；
+    * 专项扣除 / 专项附加 / 已预扣：关键词附近金额；「每月」表述 × 月份数换算为累计；
+    * 一次性 60,000 元扣除：识别「一次性扣除 6 万」等表述。
+    """
+    raw = text or ""
+    amounts: list[float] = entities.get("amounts") or []
+    months = entities.get("months_declared")
+    args: dict[str, Any] = {"months_declared": int(months) if months is not None else 1}
+    declared_months = args["months_declared"]
+
+    cumulative_flag = bool(re.search(r"累计(?:收入|工资|薪金|应发|发放)|全年累计|累计数|收入合计", raw))
+    monthly_flag = bool(re.search(r"月薪|每月|月工资|月收入|单月|一个月", raw))
+
+    income = _amount_near_keyword(raw, r"月薪|工资|收入|薪金|应发|工资薪金")
+    if income is None and amounts:
+        income = amounts[0]
+    if income is not None:
+        if monthly_flag and not cumulative_flag and declared_months > 1:
+            args["cumulative_income"] = round2(income * declared_months)
+        else:
+            args["cumulative_income"] = round2(income)
+
+    # 扣除项若按「每月」表述，换算为累计金额
+    multiplier = declared_months if re.search(r"每月|每个月|月均", raw) else 1
+    social = _amount_near_keyword(raw, r"社保|三险|社会保险|五险一金")
+    if social:
+        args["cumulative_social_insurance"] = round2(social * multiplier)
+    fund = _amount_near_keyword(raw, r"公积金|住房公积金")
+    if fund:
+        args["cumulative_housing_fund"] = round2(fund * multiplier)
+    special = _amount_near_keyword(raw, r"专项附加扣除|专项附加")
+    if special:
+        args["cumulative_special_additional"] = round2(special * multiplier)
+    other = _amount_near_keyword(raw, r"其他扣除")
+    if other:
+        args["cumulative_other_deduction"] = round2(other * multiplier)
+    withheld = _amount_near_keyword(raw, r"已预扣|已预缴|已扣缴|已缴个税|已缴税")
+    if withheld:
+        args["cumulative_tax_withheld"] = round2(withheld)
+
+    if re.search(r"一次性\s*(?:扣除)?\s*(?:6\s*万|60,?000|六万)|一次性减除", raw):
+        args["one_time_basic_deduction"] = True
+
+    period = entities.get("period") or ""
+    if period:
+        args["period"] = period
+    return args
+
+
 def route(text: str) -> dict[str, Any]:
     """把用户输入路由到具体工具，返回 ``{"intent", "tool", "arguments", "reply_hint"}``。
 
@@ -737,6 +874,14 @@ def route(text: str) -> dict[str, Any]:
         elif re.search(r"季度|季", text or ""):
             arguments["period"] = engine.current_quarter(_today())
         reply_hint = "调用 calc_stamp_tax 计算合同印花税，说明六税两费减半后的应缴金额。"
+
+    elif intent == "iit":
+        tool = "calc_iit"
+        arguments.update(_iit_arguments(text or "", entities))
+        reply_hint = (
+            "调用 calc_iit 按累计预扣法计算本期应预扣个税，解释累计口径、专项附加扣除，"
+            "并提醒 2026 年扣缴端按实际申报月份累计、零工资月份也要零申报。"
+        )
 
     elif intent == "income":
         tool = "add_income"

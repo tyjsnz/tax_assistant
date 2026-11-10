@@ -260,6 +260,9 @@ def test_intents_cover_required_eight():
         ("小规模纳税人季度免税额度是多少", "policy"),
         ("算一下企业所得税，年利润20万", "calc_corp_tax"),
         ("印花税怎么算", "calc_stamp_tax"),
+        ("个税怎么算", "iit"),
+        ("月薪1.5万，这个月个税怎么算", "iit"),
+        ("专项附加扣除怎么算个税", "iit"),
     ],
 )
 def test_detect_intent(text, expected):
@@ -353,6 +356,42 @@ def test_route_other_intents():
     assert route("帮我把这笔做成分录")["tool"] is None
 
 
+def test_iit_entities_and_route():
+    """个税意图抽取累计月份数与累计收入，并正确路由到 calc_iit。"""
+    entities = extract_entities("今年已申报11个月，累计收入16.5万")
+    assert entities["months_declared"] == 11
+    assert 165000.0 in entities["amounts"]
+
+    assert extract_entities("1-3月的工资个税")["months_declared"] == 3
+    assert extract_entities("个税怎么算")["months_declared"] is None
+
+    routed = route("月薪1.5万，今年已申报11个月，个税怎么算")
+    assert routed["intent"] == "iit"
+    assert routed["tool"] == "calc_iit"
+    assert routed["arguments"]["cumulative_income"] == 165000.0
+    assert routed["arguments"]["months_declared"] == 11
+    assert routed["reply_hint"]
+
+    cumulative = route("累计收入9万，累计申报3个月，个税怎么算")
+    assert cumulative["arguments"]["cumulative_income"] == 90000.0
+    assert cumulative["arguments"]["months_declared"] == 3
+
+    with_deductions = route(
+        "月薪2万，五险一金每月3000，专项附加扣除每月2000，已申报6个月，个税怎么算"
+    )
+    assert with_deductions["arguments"]["cumulative_income"] == 120000.0
+    assert with_deductions["arguments"]["cumulative_social_insurance"] == 18000.0
+    assert with_deductions["arguments"]["cumulative_special_additional"] == 12000.0
+
+
+def test_iit_intent_does_not_conflict():
+    """新增 iit 意图不得影响既有意图：增值税、研发工资、政策咨询仍走原路由。"""
+    assert detect_intent("这个季度开了8万普票，增值税怎么算？")["intent"] == "calc_vat"
+    assert detect_intent("这个月研发人员工资总共2万")["intent"] == "calc_rd"
+    assert detect_intent("小规模现在增值税税率多少？")["intent"] == "policy"
+    assert detect_intent("个税申报截止日是什么时候")["intent"] == "calendar"
+
+
 def test_detect_intent_llm_fallback(monkeypatch):
     class FakeClient:
         configured = True
@@ -387,12 +426,13 @@ def test_detect_intent_llm_failure_falls_back(monkeypatch):
 def test_tool_specs_and_names():
     specs = tool_specs()
     assert [spec["function"]["name"] for spec in specs] == TOOL_NAMES
-    assert len(TOOL_NAMES) == 13
+    assert len(TOOL_NAMES) == 14
+    assert "calc_iit" in TOOL_NAMES
     for spec in specs:
         assert spec["type"] == "function"
         assert spec["function"]["description"]
         assert spec["function"]["parameters"]["type"] == "object"
-    assert len(describe_tools()) == 13
+    assert len(describe_tools()) == 14
 
 
 def test_call_tool_unknown_and_missing_params():
@@ -478,6 +518,87 @@ def test_calc_stamp_tax_tool():
     assert "印花税" in result["display"]
 
 
+def test_calc_iit_tool_first_month():
+    result = call_tool(
+        "calc_iit",
+        {"cumulative_income": 15000, "months_declared": 1, "period": "2026-11"},
+    )
+    assert result["ok"] is True, result["error"]
+    data = result["data"]
+    assert data["cumulative_basic_deduction"] == 5000.0
+    assert data["cumulative_taxable_income"] == 10000.0
+    assert data["applicable_rate"] == 0.03
+    assert data["tax_payable"] == 300.0
+    assert data["disclaimer"] == config.DISCLAIMER
+    display = result["display"]
+    assert "本期应预扣预缴" in display
+    assert "300.00" in display
+    assert "国家税务总局公告2018年第61号" in display
+    assert "零申报" in display
+    assert config.DISCLAIMER in display
+
+
+def test_calc_iit_tool_cumulative_with_withheld():
+    result = call_tool(
+        "calc_iit",
+        {
+            "cumulative_income": 30000,
+            "months_declared": 2,
+            "cumulative_social_insurance": 3000,
+            "cumulative_special_additional": 2000,
+            "cumulative_tax_withheld": 300,
+            "period": "2026-02",
+        },
+    )
+    assert result["ok"] is True, result["error"]
+    data = result["data"]
+    assert data["cumulative_taxable_income"] == 15000.0
+    assert data["cumulative_tax"] == 450.0
+    assert data["tax_payable"] == 150.0
+
+
+def test_calc_iit_tool_rate_bracket_and_zero_months():
+    result = call_tool("calc_iit", {"cumulative_income": 90000, "months_declared": 3})
+    assert result["ok"] is True
+    assert result["data"]["cumulative_taxable_income"] == 75000.0
+    assert result["data"]["applicable_rate"] == 0.10
+    assert result["data"]["quick_deduction"] == 2520.0
+    assert result["data"]["cumulative_tax"] == 4980.0
+
+    zero = call_tool("calc_iit", {"cumulative_income": 10000, "months_declared": 0})
+    assert zero["ok"] is True
+    assert zero["data"]["cumulative_basic_deduction"] == 0.0
+    assert zero["data"]["cumulative_taxable_income"] == 10000.0
+    assert any("零申报" in warning for warning in zero["data"]["warnings"])
+    assert "零申报" in zero["display"]
+
+
+def test_calc_iit_tool_one_time_deduction():
+    result = call_tool(
+        "calc_iit",
+        {"cumulative_income": 100000, "months_declared": 3, "one_time_basic_deduction": True},
+    )
+    assert result["ok"] is True
+    assert result["data"]["cumulative_basic_deduction"] == 60000.0
+    assert result["data"]["cumulative_taxable_income"] == 40000.0
+    assert result["data"]["cumulative_tax"] == 1480.0
+
+
+def test_calc_iit_tool_missing_params():
+    missing_income = call_tool("calc_iit", {})
+    assert missing_income["ok"] is False
+    assert "cumulative_income" in missing_income["error"]
+
+    missing_months = call_tool("calc_iit", {"cumulative_income": 15000})
+    assert missing_months["ok"] is False
+    assert "months_declared" in missing_months["error"]
+    assert "零申报" in missing_months["error"]
+
+    bad_months = call_tool("calc_iit", {"cumulative_income": 15000, "months_declared": "abc"})
+    assert bad_months["ok"] is False
+    assert "months_declared" in bad_months["error"]
+
+
 # =============================================================================
 # orchestrator：本地降级
 # =============================================================================
@@ -511,6 +632,34 @@ def test_local_reply_red_bill():
     assert result["intent"] == "red_bill"
     assert "红利账单" in result["reply"]
     assert "增值税" in result["reply"]
+
+
+def test_local_reply_iit():
+    result = orchestrator.local_reply("月薪1.5万，这个月个税怎么算")
+    assert result["intent"] == "iit"
+    assert result["used_llm"] is False
+    assert result["tool_calls"][0]["name"] == "calc_iit"
+    assert result["tool_calls"][0]["result"]["ok"] is True
+    assert result["tool_calls"][0]["result"]["data"]["tax_payable"] == 300.0
+    reply = result["reply"]
+    assert "本期应预扣" in reply
+    assert "300.00" in reply
+    assert "累计预扣" in reply
+    assert "国家税务总局公告2018年第61号" in reply
+    assert "零申报" in reply
+    assert config.DISCLAIMER in reply
+
+
+def test_local_reply_iit_missing_income():
+    result = orchestrator.local_reply("个税怎么算")
+    assert result["intent"] == "iit"
+    assert result["tool_calls"][0]["name"] == "calc_iit"
+    assert result["tool_calls"][0]["result"]["ok"] is False
+    reply = result["reply"]
+    assert "累计" in reply
+    assert "已实际申报月份数" in reply
+    assert "零申报" in reply
+    assert config.DISCLAIMER in reply
 
 
 def test_local_reply_chat_fallback():
