@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.6.0-informational)
+![Version](https://img.shields.io/badge/version-1.7.0-informational)
 
 📖 **文档**：[快速开始](docs/QUICKSTART.md) · [使用指南](docs/USER_GUIDE.md) ·
 [部署](docs/DEPLOYMENT.md) · [架构](docs/ARCHITECTURE.md) · [安全](SECURITY.md) ·
@@ -95,6 +95,7 @@
 | 🗺️ 地区参数化 | 城建税地区税率（市区 7% / 县城·镇 5% / 其他 1%）、教育费附加 3%、地方教育附加 2%；申报与归档自动引用 | 地区预设 + 公司级参数，算税/申报表联动 |
 | 👥 员工与工资 | 员工档案（含专项附加扣除明细）、月度工资表、**累计预扣法**个税计算、工资计提/发放凭证、扣缴申报辅助表导出 | 确定性引擎 + 本地台账 + 标准申报表 bundle |
 | 📊 汇算清缴 | 年度数据汇总、纳税调整（限额类自动 + 手工）、亏损弥补台账、汇算测算、年度申报辅助表与检查清单 | 确定性引擎 + 台账 + bundle/Excel，不代替电子税务局申报 |
+| 📄 工商年报 / 残保金 | 工商年报数据准备表（企业信息/资产估算/人数/校验）、残保金测算（1.5% 比例、分档减缴、30 人以下免征）、社保/残保金申报提醒 | 台账汇总 + 确定性测算 + 清单，不代替公示系统/残联申报 |
 | 🧮 算税引擎 | 增值税及附加、企业所得税（年度/季度预缴）、研发费用加计扣除、印花税 | **确定性 Python 代码**（Decimal 精确计算），LLM 不参与计算 |
 | 📒 台账管理 | 收入 / 费用 / 研发辅助账 / 合同台账，自然语言录入，CSV 导入导出，分录自动生成 | SQLite 之外轻量 CSV 台账 + 原子写入 |
 | 📥 票据与流水 | 批量导入数电票（XML/OFD/PDF）与银行流水（CSV/Excel），去重入池、自动匹配、一键确认入账并生成凭证 | 本地解析（xml/zipfile/pypdf/openpyxl）+ 确定性匹配打分 |
@@ -605,4 +606,4 @@ data/
 
 ---
 
-*版本 1.6.0 · 最后更新：2026 年 11 月*
+*版本 1.7.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

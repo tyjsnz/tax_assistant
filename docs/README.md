@@ -19,6 +19,9 @@
 | [CONTRACTS_P1_A.md](CONTRACTS_P1_A.md) | 开发者 | 多公司/地区参数契约 |
 | [CONTRACTS_P1_B.md](CONTRACTS_P1_B.md) | 开发者 | 个税扣缴契约 |
 | [CONTRACTS_P1_C.md](CONTRACTS_P1_C.md) | 开发者 | 汇算清缴契约 |
+| [CONTRACTS_P1_D.md](CONTRACTS_P1_D.md) | 开发者 | 工商年报/残保金契约 |
+
+另见：[RELEASE_NOTES_v1.7.0.md](RELEASE_NOTES_v1.7.0.md)（当前版本发布说明）。
 
 根目录另有：[README.md](../README.md)（项目介绍/功能/政策口径）、
 [CONTRIBUTING.md](../CONTRIBUTING.md)（贡献指南）、[CHANGELOG.md](../CHANGELOG.md)（版本记录）。

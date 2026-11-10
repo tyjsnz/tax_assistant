@@ -29,3 +29,10 @@ data/logs/
 
 # 演示账套（由 scripts/seed_demo.py 生成，不入库）
 data/companies/demo/
+
+# 账套数据（本地运行时生成，不入库；首次启动自动创建，演示数据用 scripts/seed_demo.py）
+data/companies/
+data/companies.json
+data/schema.json
+data/*.csv
+data/logs/
