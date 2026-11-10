@@ -24,6 +24,7 @@ PAGES = [
     "📥 票据与流水",
     "🧮 算税工作台",
     "📋 申报填报",
+    "📊 汇算清缴",
     "🔍 申报核对",
     "📚 政策知识库",
     "🤖 AI 助手",
@@ -49,7 +50,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 10 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 11 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     radio = at.radio(key="nav")
@@ -488,4 +489,92 @@ def test_payroll_iit_return_and_export() -> None:
     if not export[0].disabled:
         export[0].click().run()
         _assert_clean(at, "员工与工资（导出 Excel 后）")
+        assert at.download_button, "导出后应出现下载按钮"
+
+
+def _settlement_year() -> str:
+    """页面默认汇算年度（与 settlement_api.current_year 一致）。"""
+    from ui.components import settlement_api
+
+    return settlement_api.current_year()
+
+
+def test_settlement_page_renders_empty() -> None:
+    """汇算清缴：空数据下五个 tab 与关键按钮正常渲染。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("📊 汇算清缴").run()
+    _assert_clean(at, "汇算清缴（空数据）")
+
+    tab_labels = [tab.label for tab in at.tabs]
+    assert any("年度数据" in label for label in tab_labels)
+    assert any("纳税调整" in label for label in tab_labels)
+    assert any("亏损弥补" in label for label in tab_labels)
+    assert any("申报辅助表" in label for label in tab_labels)
+    assert any("检查清单" in label for label in tab_labels)
+
+    labels = [button.label for button in at.button]
+    assert any("保存年度输入" in label for label in labels), "应有「保存年度输入」按钮"
+    assert any("计算汇算结果" in label for label in labels), "应有「计算汇算结果」按钮"
+    assert any("添加调整项" in label for label in labels), "应有「添加调整项」按钮"
+    assert any("添加亏损记录" in label for label in labels), "应有「添加亏损记录」按钮"
+    assert any("生成辅助表" in label for label in labels), "应有「生成辅助表」按钮"
+    assert any("生成 Excel" in label for label in labels), "应有「生成 Excel」按钮"
+    assert at.selectbox(key="settlement_year") is not None
+    html_text = "\n".join(element.value for element in at.html)
+    assert "仅供参考" in html_text, "页面底部必须展示免责声明"
+
+
+def test_settlement_save_inputs_and_compute() -> None:
+    """保存年度补充输入 → 计算汇算结果 → 添加手工纳税调整。"""
+    pytest.importorskip("ledger.settlement")
+    import ledger
+
+    year = _settlement_year()
+    at = _new_app()
+    at.radio(key="nav").set_value("📊 汇算清缴").run()
+    _assert_clean(at, "汇算清缴（输入前）")
+
+    at.number_input(key=f"settlement_ent_{year}").set_value(10000.0)
+    at.number_input(key=f"settlement_prepaid_{year}").set_value(5000.0)
+    [button for button in at.button if button.label == "💾 保存年度输入"][0].click().run()
+    _assert_clean(at, "汇算清缴（保存输入后）")
+    assert ledger.table("annual_settlements").count() >= 1, "保存年度输入后应有 annual_settlements 记录"
+
+    compute_buttons = [button for button in at.button if button.label == "🧮 计算汇算结果"]
+    assert compute_buttons, "应有「计算汇算结果」按钮"
+    if compute_buttons[0].disabled:
+        pytest.skip("汇算计算后端未就绪（按钮禁用）")
+    compute_buttons[0].click().run()
+    _assert_clean(at, "汇算清缴（计算后）")
+    metric_labels = [metric.label for metric in at.metric]
+    assert any("应纳税所得额" in label for label in metric_labels)
+    assert any("应纳所得税额" in label for label in metric_labels)
+
+    # 添加手工纳税调整
+    at.number_input(key=f"settlement_adj_amount_{year}").set_value(5000.0)
+    add_buttons = [button for button in at.button if button.label == "添加调整项"]
+    assert add_buttons
+    add_buttons[0].click().run()
+    _assert_clean(at, "汇算清缴（添加纳税调整后）")
+    assert ledger.table("tax_adjustments").count() >= 1, "添加后应有纳税调整记录"
+
+
+def test_settlement_annual_return_and_export() -> None:
+    """年度申报辅助表：生成辅助表与导出 Excel 按钮可点击且不异常。"""
+    pytest.importorskip("filing.cit_annual")
+    year = _settlement_year()
+    at = _new_app()
+    at.radio(key="nav").set_value("📊 汇算清缴").run()
+    build = [button for button in at.button if button.label == "📋 生成辅助表"]
+    assert build, "应有「生成辅助表」按钮"
+    if build[0].disabled:
+        pytest.skip("年度申报辅助表后端未就绪（按钮禁用）")
+    build[0].click().run()
+    _assert_clean(at, "汇算清缴（生成辅助表后）")
+
+    export = [button for button in at.button if button.label == "📊 生成 Excel"]
+    assert export, "应有「生成 Excel」按钮"
+    if not export[0].disabled:
+        export[0].click().run()
+        _assert_clean(at, "汇算清缴（导出 Excel 后）")
         assert at.download_button, "导出后应出现下载按钮"

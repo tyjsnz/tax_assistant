@@ -22,24 +22,24 @@
       "updated_at": "2026-11-10 12:39:33"
     },
     {
-      "name": "昆明云睿技术服务有限公司",
-      "short_name": "云睿技术",
+      "id": "co2",
+      "name": "昆明XY技术服务有限公司",
+      "short_name": "XY技术",
+      "taxpayer_type": "小规模纳税人",
       "industry": "技术服务",
       "unified_social_credit_code": "91530100MA6TEST02X",
-      "region_id": "yunnan-county-town",
-      "id": "co2",
-      "taxpayer_type": "小规模纳税人",
       "tax_authority": "",
       "province": "云南省",
       "city": "",
       "county": "",
+      "region_id": "yunnan-county-town",
+      "city_maintenance_tax_rate": 0.05,
       "accounting_standard": "小企业会计准则",
       "vat_levy_method": "按季申报",
       "note": "",
-      "city_maintenance_tax_rate": 0.05,
       "created_at": "2026-11-10 12:45:01",
-      "updated_at": "2026-11-10 12:45:01"
+      "updated_at": "2026-11-10 13:55:13"
     }
   ],
-  "updated_at": "2026-11-10 13:47:52"
+  "updated_at": "2026-11-10 13:59:40"
 }

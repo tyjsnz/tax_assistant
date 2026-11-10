@@ -1,0 +1,2 @@
+﻿id,year,data_json,status,note,created_at,updated_at
+CIT000001,2026,"{""entertainment_actual"":12000.0,""advertising_actual"":50000.0,""welfare_actual"":30000.0,""education_actual"":18000.0,""union_actual"":6000.0,""employees"":5,""total_assets"":2000000.0,""prepaid_tax"":8000.0,""accounting_profit"":null,""rd_deduction"":null,""is_restricted_industry"":false,""note"":""演示数据""}",草稿,演示数据,2026-11-10 13:58:49,

@@ -13,6 +13,7 @@ __all__ = [
     "formatting",
     "ledger_api",
     "payroll_api",
+    "settlement_api",
     "runtime",
     "theme",
     "ui",

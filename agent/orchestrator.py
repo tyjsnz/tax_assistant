@@ -307,6 +307,76 @@ def _iit_reply(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _cit_settlement_reply(data: dict[str, Any]) -> str:
+    """用自然语言解释企业所得税年度汇算清缴结果（数字全部来自 engine）。"""
+    year = data.get("year") or ""
+    small = "符合" if data.get("qualifies_small_low_profit") else "不符合"
+    label = data.get("payable_label") or "应补税额"
+    amount = data.get("refund") or data.get("payable")
+    lines = [
+        f"{year} 年度企业所得税汇算清缴（辅助测算）：",
+        "",
+        f"- 会计利润 ¥{yuan(data.get('accounting_profit'))}；",
+        f"- 纳税调整增加 ¥{yuan((data.get('limit_adjustment_add') or 0) + (data.get('manual_adjustment_add') or 0))}，"
+        f"纳税调整减少 ¥{yuan(data.get('manual_adjustment_reduce'))}，"
+        f"研发费用加计扣除 ¥{yuan(data.get('research_deduction'))}；",
+    ]
+    for item in data.get("limit_adjustment_items") or []:
+        if not item.get("actual"):
+            continue
+        lines.append(
+            f"  · {item['label']}：发生额 ¥{yuan(item['actual'])}，限额 ¥{yuan(item['limit'])}，"
+            f"可扣除 ¥{yuan(item['deductible'])}，调增 ¥{yuan(item['adjustment_add'])}"
+        )
+    for item in data.get("manual_adjustment_items") or []:
+        lines.append(f"  · {item['item_type']}（{item['direction']}）¥{yuan(item['adjustment_amount'])}")
+    loss_result = data.get("loss_carryforward") or {}
+    for line in loss_result.get("lines") or []:
+        lines.append(
+            f"  · {line['year']} 年度亏损 ¥{yuan(line['loss_amount'])}，"
+            f"本年弥补 ¥{yuan(line['used_this_year'])}，剩余 ¥{yuan(line['remaining_after'])}（{line['status']}）"
+        )
+    lines.extend(
+        [
+            f"- 弥补以前年度亏损 ¥{yuan(data.get('loss_used'))} 后，"
+            f"应纳税所得额 ¥{yuan(data.get('taxable_income'))}；",
+            f"- {small}小型微利企业条件，适用税率 {pct(data.get('applicable_rate'))}"
+            + ("（实际税负 5%）" if data.get("qualifies_small_low_profit") else "")
+            + f"，应纳所得税额 ¥{yuan(data.get('corporate_tax'))}"
+            f"（减免 ¥{yuan(data.get('tax_reduction'))}）；",
+            f"- 已预缴企业所得税 ¥{yuan(data.get('prepaid_tax'))}；"
+            f"**{label} ¥{yuan(amount)}**。",
+        ]
+    )
+    if data.get("note"):
+        lines.extend(["", f"说明：{data['note']}"])
+    year_int = int(str(year)[:4]) if str(year)[:4].isdigit() else config.today().year
+    lines.extend(
+        [
+            "",
+            "📌 年度汇算口径：",
+            "1. 以会计利润为起点，按税法做**纳税调增 / 调减**：业务招待费按发生额 60% 与营业收入 5‰ 孰低；"
+            "广告费和业务宣传费不超过营业收入 15%；职工福利费 14%、职工教育经费 8%、工会经费 2%（以工资薪金总额为基数）；",
+            "2. 纳税调整后所得可弥补**以前年度亏损**：一般企业 5 年，高新技术企业/科技型中小企业 10 年；",
+            "3. 符合**小型微利企业**条件的，减按 25% 计入应纳税所得额、20% 税率，实际税负 **5%**；",
+            f"4. 次年 **5 月 31 日**前（{year_int + 1}-05-31）在电子税务局完成企业所得税年度申报（A 类），多退少补。",
+            "",
+            "📌 资料准备：年度财务报表、总账/明细账与发票凭证、工资表与社保缴纳记录、研发项目资料与研发费用辅助账、"
+            "纳税调整明细及依据、以前年度亏损台账、季度预缴申报表与完税凭证、优惠事项留存备查资料。",
+        ]
+    )
+    sources = data.get("policy_sources") or []
+    if sources:
+        lines.extend(["", "📌 政策依据："])
+        for source in sources[:5]:
+            lines.append(
+                f"- {source.get('source')}（{source.get('effective_date')} 起）：{source.get('title')}"
+            )
+    for warning in (data.get("warnings") or [])[:5]:
+        lines.append(f"⚠️ {warning}")
+    return "\n".join(lines)
+
+
 def _compose_local(intent: str, text: str, route: dict[str, Any], result: dict[str, Any] | None) -> str:
     """根据意图与工具结果组织本地中文回复。"""
     arguments = route.get("arguments") or {}
@@ -356,6 +426,29 @@ def _compose_local(intent: str, text: str, route: dict[str, Any], result: dict[s
         return (
             "请告诉我本年累计工资收入与已实际申报月份数，我会用累计预扣法计算本期应预扣个税；"
             "例如：「月薪 1.5 万，今年已申报 11 个月，个税怎么算」。"
+        )
+
+    if intent == "cit_settlement":
+        if result and result.get("ok"):
+            return _cit_settlement_reply(result["data"])
+        if result and result.get("error"):
+            if "请至少提供" in result["error"] or "缺少必填参数" in result["error"]:
+                return (
+                    "企业所得税年度汇算清缴需要以下数据（有多少给多少，我会先测算）：\n"
+                    "1. 年度不含税营业收入、成本费用（或直接给会计利润总额）；\n"
+                    "2. 工资薪金总额、业务招待费 / 广告费 / 职工福利费 / 职工教育经费 / 工会经费实际发生额；\n"
+                    "3. 研发费用加计扣除额、以前年度亏损、本年度已预缴所得税、从业人数与资产总额（小微判定）。\n"
+                    "例如：「2026 年度汇算清缴，收入 100 万，成本 60 万，工资 20 万，业务招待费 3 万，广告费 20 万，已预缴 2 万」。\n\n"
+                    "📌 年度汇算口径：会计利润 → 纳税调增/调减 → 弥补以前年度亏损（一般 5 年）→ "
+                    "应纳税所得额 → 小型微利企业 5% / 法定 25% → 应补（退）税额。\n"
+                    "📌 申报期限：次年 **5 月 31 日**前完成年度汇算清缴（多退少补）。\n"
+                    "📌 资料准备：年度财务报表、账簿凭证与发票、工资表与社保、研发辅助账、"
+                    "纳税调整明细及依据、以前年度亏损台账、季度预缴申报表与完税凭证。"
+                )
+            return f"汇算清缴测算失败：{result['error']}"
+        return (
+            "请提供年度收入、成本费用（或会计利润）等数据，我会按年度汇算口径测算应纳税所得额、"
+            "应纳所得税额与应补（退）税额；例如：「2026 年度汇算清缴，收入 100 万，成本 60 万」。"
         )
 
     if intent in ("income", "expense"):

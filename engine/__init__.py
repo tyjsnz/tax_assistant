@@ -6,6 +6,14 @@
 
 from __future__ import annotations
 
+from engine.cit_settlement import (
+    LOSS_CARRYFORWARD_YEARS,
+    SETTLEMENT_SOURCES,
+    calc_adjustment_limits,
+    calc_loss_carryforward,
+    calc_settlement,
+    get_settlement_sources,
+)
 from engine.corporate_tax import calc_cit_prepay, calc_corp_tax
 from engine.iit import (
     BASIC_DEDUCTION_PER_MONTH,
@@ -77,6 +85,12 @@ __all__ = [
     "calc_vat",
     "calc_corp_tax",
     "calc_cit_prepay",
+    "calc_adjustment_limits",
+    "calc_loss_carryforward",
+    "calc_settlement",
+    "get_settlement_sources",
+    "SETTLEMENT_SOURCES",
+    "LOSS_CARRYFORWARD_YEARS",
     "calc_iit_withholding",
     "calc_special_deduction",
     "get_iit_rate_table",

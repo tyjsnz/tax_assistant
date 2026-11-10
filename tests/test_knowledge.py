@@ -162,6 +162,44 @@ def test_search_iit_policy():
     assert hits[0]["category"] == "其他税费"
 
 
+def test_settlement_policy_document_current():
+    """汇算清缴政策文档覆盖 A 类年度申报、纳税调整、亏损弥补、小微与申报期限。"""
+    policy = get_policy("企业所得税/汇算清缴")
+    assert policy is not None
+    assert policy["last_verified"] == "2026-11-10"
+    assert "实施条例" in policy["source"]
+    assert "2023年第12号" in policy["source"]
+    assert "2023年第7号" in policy["source"]
+
+    content = policy["content"]
+    for keyword in (
+        "纳税调整",
+        "业务招待费",
+        "广告费",
+        "三项经费",
+        "亏损弥补",
+        "5 年",
+        "小型微利企业",
+        "5%",
+        "5 月 31 日",
+        "A100000",
+        "A105000",
+        "A106000",
+        "A107040",
+        "A107012",
+        "留存",
+    ):
+        assert keyword in content, f"汇算清缴文档缺少要点：{keyword}"
+    assert "主管税务机关口径为准" in content or "以主管税务机关口径为准" in content
+
+
+def test_search_settlement_policy():
+    hits = search("企业所得税 汇算清缴 纳税调整 业务招待费 亏损弥补 5月31日", top_k=3)
+    assert hits
+    assert hits[0]["id"] == "企业所得税/汇算清缴"
+    assert hits[0]["category"] == "企业所得税"
+
+
 def test_list_get_and_categories():
     assert "增值税" in categories()
     assert len(list_policies("企业所得税")) >= 2

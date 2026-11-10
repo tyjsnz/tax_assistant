@@ -1,4 +1,4 @@
-"""Agent 工具集：供 DeepSeek function calling 调用的 14 个固定工具。
+"""Agent 工具集：供 DeepSeek function calling 调用的 15 个固定工具。
 
 核心原则
 --------
@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Callable
 
 import config
@@ -22,11 +23,12 @@ from engine.money import pct, round2, yuan
 
 DISCLAIMER = config.DISCLAIMER
 
-#: 14 个固定工具名称
+#: 15 个固定工具名称
 TOOL_NAMES: list[str] = [
     "calc_vat",
     "calc_corp_tax",
     "calc_cit_prepay",
+    "calc_cit_settlement",
     "calc_rd_deduction",
     "calc_stamp_tax",
     "calc_iit",
@@ -273,6 +275,203 @@ def _tool_calc_cit_prepay(args: dict[str, Any]) -> dict[str, Any]:
         f"- 说明：{result.get('note', '')}",
         DISCLAIMER,
     ]
+    return _ok(result, "\n".join(lines))
+
+
+def _coerce_list_arg(value: Any, label: str) -> list[Any]:
+    """把模型传入的列表参数（list / JSON 字符串 / dict 包裹）统一为 list。"""
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict):
+            for key in ("items", "adjustments", "losses", "data", "list"):
+                if isinstance(parsed.get(key), list):
+                    return parsed[key]
+        raise ValueError(f"{label} 需为数组（list），例如 [] 或 JSON 数组字符串，收到「{text[:80]}」。")
+    raise ValueError(f"{label} 需为数组（list）。")
+
+
+def _normalize_adjustments_arg(value: Any) -> list[dict[str, Any]]:
+    """规范化 ``extra_adjustments``：``[{item_type, direction, adjustment_amount, ...}]``。"""
+    items = _coerce_list_arg(value, "extra_adjustments")
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"extra_adjustments 第 {index} 项应为对象，例如 "
+                             '{"item_type": "罚款支出", "direction": "调增", "adjustment_amount": 5000}。')
+        direction = str(item.get("direction") or item.get("方向") or "调增").strip()
+        if direction not in ("调增", "调减"):
+            direction = "调减" if direction in ("减少", "减", "扣除", "-") else "调增"
+        amount = _to_float(
+            item.get("adjustment_amount", item.get("amount", item.get("金额"))),
+            f"第 {index} 条纳税调整金额",
+        )
+        if amount < 0:
+            amount = abs(amount)
+        normalized.append(
+            {
+                "item_type": str(item.get("item_type") or item.get("item") or item.get("项目") or "其他调整").strip(),
+                "direction": direction,
+                "adjustment_amount": amount,
+                "accounting_amount": _to_float(item.get("accounting_amount"), "账面金额"),
+                "tax_amount": _to_float(item.get("tax_amount"), "税收金额"),
+                "basis": str(item.get("basis") or "").strip(),
+                "source": str(item.get("source") or "").strip(),
+                "note": str(item.get("note") or "").strip(),
+            }
+        )
+    return normalized
+
+
+def _normalize_losses_arg(value: Any, year: str) -> list[dict[str, Any]]:
+    """规范化 ``losses``：``[{year, loss_amount, used_amount}]``。"""
+    items = _coerce_list_arg(value, "losses")
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(items, start=1):
+        if isinstance(item, (int, float)) and not isinstance(item, bool):
+            normalized.append({"year": str(int(year) - 1), "loss_amount": round2(float(item)), "used_amount": 0.0})
+            continue
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"losses 第 {index} 项应为对象，例如 "
+                '{"year": "2024", "loss_amount": 100000, "used_amount": 0}。'
+            )
+        raw_year = item.get("year", item.get("亏损年度"))
+        if raw_year in (None, ""):
+            loss_year = int(year) - 1
+        else:
+            try:
+                loss_year = int(float(str(raw_year)))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"losses 第 {index} 项年度「{raw_year}」不合法，请提供 4 位年度。") from exc
+        normalized.append(
+            {
+                "year": str(loss_year),
+                "loss_amount": _to_float(item.get("loss_amount", item.get("amount", item.get("金额"))), "亏损金额"),
+                "used_amount": _to_float(item.get("used_amount"), "已弥补金额"),
+            }
+        )
+    return normalized
+
+
+def _tool_calc_cit_settlement(args: dict[str, Any]) -> dict[str, Any]:
+    """企业所得税年度汇算清缴辅助测算（限额类调增、手工调整、亏损弥补、小微优惠）。"""
+    raw_year = args.get("year")
+    if raw_year in (None, ""):
+        year = str(config.today().year)
+    else:
+        match = re.search(r"(20\d{2})", str(raw_year))
+        if not match:
+            raise ValueError(f"year「{raw_year}」格式不正确，请提供 4 位纳税年度，如 2026。")
+        year = match.group(1)
+
+    revenue = _opt_float(args, "revenue_exclusive", 0.0)
+    cost = _opt_float(args, "cost_total", 0.0)
+    has_profit = args.get("accounting_profit") not in (None, "")
+    accounting_profit = _opt_float(args, "accounting_profit", 0.0) if has_profit else None
+    adjustments = _normalize_adjustments_arg(args.get("extra_adjustments"))
+    losses = _normalize_losses_arg(args.get("losses"), year)
+    if not has_profit and revenue == 0 and cost == 0 and not adjustments and not losses and not args.get("rd_deduction"):
+        raise ValueError(
+            "请至少提供年度数据再测算：revenue_exclusive（年度不含税收入）与 cost_total（成本费用），"
+            "或直接提供 accounting_profit（会计利润总额），单位：元。"
+        )
+
+    result = _disclaimer(
+        engine.calc_settlement(
+            year=year,
+            revenue_exclusive=revenue,
+            cost_total=cost,
+            accounting_profit=accounting_profit,
+            salary_total=_opt_float(args, "salary_total", 0.0),
+            entertainment_actual=_opt_float(args, "entertainment", 0.0),
+            advertising_actual=_opt_float(args, "advertising", 0.0),
+            welfare_actual=_opt_float(args, "welfare", 0.0),
+            education_actual=_opt_float(args, "education", 0.0),
+            union_actual=_opt_float(args, "union_actual", 0.0),
+            rd_deduction=_opt_float(args, "rd_deduction", 0.0),
+            extra_adjustments=adjustments,
+            losses=losses,
+            prepaid_tax=_opt_float(args, "prepaid_tax", 0.0),
+            employees=_opt_int(args, "employees"),
+            total_assets=_opt_float(args, "total_assets", 0.0) if args.get("total_assets") not in (None, "") else None,
+        )
+    )
+    _safe_calc_log(
+        "cit_settlement",
+        year,
+        {
+            "revenue_exclusive": revenue,
+            "cost_total": cost,
+            "accounting_profit": accounting_profit,
+            "prepaid_tax": result.get("prepaid_tax"),
+        },
+        result,
+    )
+
+    small = "符合" if result.get("qualifies_small_low_profit") else "不符合"
+    lines = [
+        f"【企业所得税年度汇算清缴（辅助测算）· {year} 年度】",
+        f"- 年度不含税收入：¥{yuan(result.get('revenue_exclusive'))}；"
+        f"成本费用：¥{yuan(result.get('cost_total'))}；会计利润：¥{yuan(result.get('accounting_profit'))}",
+        f"- 纳税调整增加：¥{yuan(result.get('manual_adjustment_add', 0) + result.get('limit_adjustment_add', 0))}"
+        f"（限额类 ¥{yuan(result.get('limit_adjustment_add'))}，手工调增 ¥{yuan(result.get('manual_adjustment_add'))}）；"
+        f"纳税调整减少：¥{yuan(result.get('manual_adjustment_reduce'))}",
+    ]
+    for item in result.get("limit_adjustment_items") or []:
+        if not item.get("actual"):
+            continue
+        lines.append(
+            f"  · {item['label']}：发生额 ¥{yuan(item['actual'])}，税前限额 ¥{yuan(item['limit'])}，"
+            f"可扣除 ¥{yuan(item['deductible'])}，调增 ¥{yuan(item['adjustment_add'])}"
+        )
+    for item in result.get("manual_adjustment_items") or []:
+        lines.append(
+            f"  · {item['item_type']}（{item['direction']}）：¥{yuan(item['adjustment_amount'])}"
+            + (f"，依据：{item['basis']}" if item.get("basis") else "")
+        )
+    lines.append(f"- 研发费用加计扣除：¥{yuan(result.get('research_deduction'))}")
+    loss_result = result.get("loss_carryforward") or {}
+    if loss_result.get("lines"):
+        for line in loss_result["lines"]:
+            lines.append(
+                f"  · {line['year']} 年度亏损：¥{yuan(line['loss_amount'])}，"
+                f"本年弥补 ¥{yuan(line['used_this_year'])}，剩余 ¥{yuan(line['remaining_after'])}"
+                f"（{line['status']}）"
+            )
+    lines.extend(
+        [
+            f"- 弥补以前年度亏损：¥{yuan(result.get('loss_used'))}（一般 5 年，高新技术/科技型中小企业 10 年）",
+            f"- 应纳税所得额：¥{yuan(result.get('taxable_income'))}；"
+            f"{small}小型微利企业条件，适用税率 {pct(result.get('applicable_rate'))}",
+            f"- 应纳所得税额：¥{yuan(result.get('corporate_tax'))}"
+            f"（小微减免 ¥{yuan(result.get('tax_reduction'))}）；已预缴：¥{yuan(result.get('prepaid_tax'))}",
+            f"- **{result.get('payable_label') or '应补税额'}：¥{yuan(result.get('refund') or result.get('payable'))}**",
+            f"- 说明：{result.get('note', '')}",
+            f"- 申报期限：{int(year) + 1} 年 5 月 31 日前完成年度汇算清缴（多退少补）",
+            "- 政策依据：",
+        ]
+    )
+    for source in result.get("policy_sources") or []:
+        lines.append(
+            f"  · {source.get('source')}（{source.get('effective_date')} 起）：{source.get('title')}"
+        )
+    for warning in result.get("warnings") or []:
+        lines.append(f"⚠️ {warning}")
+    lines.append(DISCLAIMER)
     return _ok(result, "\n".join(lines))
 
 
@@ -986,6 +1185,59 @@ _TOOL_DEFS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "calc_cit_settlement",
+        "description": (
+            "计算企业所得税年度汇算清缴（辅助测算）：业务招待费/广告费/三项经费限额类纳税调整、"
+            "手工调增调减、研发费用加计扣除、以前年度亏损弥补、小型微利企业 5% 实际税负、"
+            "应纳所得税额与应补（退）税额。"
+        ),
+        "parameters": _schema(
+            {
+                "year": {"type": "string", "description": "纳税年度，如 2026；缺省为当前年度"},
+                "revenue_exclusive": {**_MONEY, "description": "年度不含税营业收入（元）"},
+                "cost_total": {**_MONEY, "description": "年度成本费用合计（元）"},
+                "accounting_profit": {**_MONEY, "description": "会计利润总额（元，可选，提供时优先于收入−成本）"},
+                "salary_total": {**_MONEY, "description": "年度工资薪金总额（元，用于三项经费限额）"},
+                "entertainment": {**_MONEY, "description": "业务招待费实际发生额（元）"},
+                "advertising": {**_MONEY, "description": "广告费和业务宣传费实际发生额（元）"},
+                "welfare": {**_MONEY, "description": "职工福利费实际发生额（元）"},
+                "education": {**_MONEY, "description": "职工教育经费实际发生额（元）"},
+                "union_actual": {**_MONEY, "description": "工会经费实际发生额（元）"},
+                "rd_deduction": {**_MONEY, "description": "研发费用加计扣除额（元）"},
+                "extra_adjustments": {
+                    "type": "array",
+                    "description": "其他纳税调整列表，如 [{\"item_type\":\"罚款支出\",\"direction\":\"调增\",\"adjustment_amount\":5000}]",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "item_type": {"type": "string", "description": "调整项目"},
+                            "direction": {"type": "string", "enum": ["调增", "调减"]},
+                            "adjustment_amount": {**_MONEY, "description": "调整金额（元）"},
+                            "basis": {"type": "string", "description": "调整依据"},
+                        },
+                        "required": ["adjustment_amount"],
+                    },
+                },
+                "losses": {
+                    "type": "array",
+                    "description": "可弥补以前年度亏损列表，如 [{\"year\":\"2024\",\"loss_amount\":100000,\"used_amount\":0}]",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "year": {"type": "string", "description": "亏损年度"},
+                            "loss_amount": {**_MONEY, "description": "亏损金额（元）"},
+                            "used_amount": {**_MONEY, "description": "已弥补金额（元）"},
+                        },
+                    },
+                },
+                "prepaid_tax": {**_MONEY, "description": "本年度已预缴企业所得税（元）"},
+                "employees": {"type": "integer", "description": "从业人数（小型微利企业判定）"},
+                "total_assets": {**_MONEY, "description": "资产总额（元，小型微利企业判定）"},
+            },
+            ["year"],
+        ),
+    },
+    {
         "name": "calc_rd_deduction",
         "description": "归集研发费用并计算 100% 加计扣除（默认从研发辅助账取数）。",
         "parameters": _schema(
@@ -1147,6 +1399,7 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "calc_vat": _tool_calc_vat,
     "calc_corp_tax": _tool_calc_corp_tax,
     "calc_cit_prepay": _tool_calc_cit_prepay,
+    "calc_cit_settlement": _tool_calc_cit_settlement,
     "calc_rd_deduction": _tool_calc_rd_deduction,
     "calc_stamp_tax": _tool_calc_stamp_tax,
     "calc_iit": _tool_calc_iit,

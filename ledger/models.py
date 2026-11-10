@@ -92,6 +92,12 @@ PAYROLL_STATUSES: tuple[str, ...] = ("草稿", "已确认", "已申报")
 #: 减除费用扣除方式
 BASIC_DEDUCTION_CHOICES: tuple[str, ...] = ("累计预扣", "一次性60000")
 
+#: 纳税调整方向
+ADJUSTMENT_DIRECTIONS: tuple[str, ...] = ("调增", "调减")
+
+#: 汇算清缴状态
+SETTLEMENT_STATUSES: tuple[str, ...] = ("草稿", "已确认")
+
 DIRECTIONS: tuple[str, ...] = ("借", "贷")
 
 # 小规模纳税人征收率（3% 减按 1%）
@@ -471,6 +477,57 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("zero_declaration", "bool", "零申报"),
             _col("status", "str", "状态"),
             _col("journal_entry_no", "str", "凭证号"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+            _col("updated_at", "str", "更新时间"),
+        ],
+    },
+    # 企业所得税汇算：纳税调整清单（P1-C）
+    "tax_adjustments": {
+        "file": "tax_adjustments.csv",
+        "prefix": "ADJ",
+        "label": "纳税调整清单",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("year", "str", "年度"),
+            _col("item_type", "str", "调整项目"),
+            _col("direction", "str", "方向"),
+            _col("accounting_amount", "money", "会计金额"),
+            _col("tax_amount", "money", "税法可扣除/确认金额"),
+            _col("adjustment_amount", "money", "调整金额"),
+            _col("basis", "str", "计算依据"),
+            _col("source", "str", "政策依据"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+        ],
+    },
+    # 企业所得税汇算：亏损弥补台账（P1-C）
+    "loss_carryforwards": {
+        "file": "loss_carryforwards.csv",
+        "prefix": "LOS",
+        "label": "亏损弥补台账",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("year", "str", "亏损年度"),
+            _col("loss_amount", "money", "可弥补亏损额"),
+            _col("used_amount", "money", "已弥补金额"),
+            _col("remaining", "money", "剩余可弥补"),
+            _col("expire_year", "str", "到期年度"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+            _col("updated_at", "str", "更新时间"),
+        ],
+    },
+    # 企业所得税汇算：年度输入与测算快照（P1-C）
+    "annual_settlements": {
+        "file": "annual_settlements.csv",
+        "prefix": "CIT",
+        "label": "年度汇算输入",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("year", "str", "年度"),
+            _col("data_json", "json", "输入数据"),
+            _col("status", "str", "状态"),
             _col("note", "str", "备注"),
             _col("created_at", "str", "创建时间"),
             _col("updated_at", "str", "更新时间"),

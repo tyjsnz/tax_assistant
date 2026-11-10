@@ -9,6 +9,8 @@ Web 界面是主要使用方式（``.venv/bin/streamlit run ui/streamlit_app.py`
     python main.py demo
     python main.py ingest --invoices examples/invoices/*.xml --bank examples/bank/*.csv --confirm-score 90
     python main.py pool
+    python main.py settlement --year 2026 --save-inputs entertainment_actual=10000 employees=5
+    python main.py cit-annual --year 2026
     python main.py employees
     python main.py payroll --period 2026-11 --build --calc --confirm
     python main.py iit-return --period 2026-11
@@ -143,6 +145,138 @@ def _month_label(period: str) -> str:
         return period_label(period)
     except Exception:  # noqa: BLE001
         return period
+
+
+def cmd_settlement(args: argparse.Namespace) -> int:
+    """企业所得税汇算辅助：年度数据 + 输入 + 测算 + 检查清单。"""
+    from ledger import settlement
+
+    year = str(args.year)
+    annual = settlement.annual_ledger_data(year)
+    inputs = settlement.get_annual_inputs(year)
+    if args.save_inputs:
+        patch: dict[str, object] = {}
+        for item in args.save_inputs:
+            if "=" not in item:
+                continue
+            key, _, value = item.partition("=")
+            try:
+                patch[key.strip()] = float(value) if "." in value or value.replace("-", "").isdigit() else value
+            except ValueError:
+                patch[key.strip()] = value
+        inputs = settlement.save_annual_inputs(year, patch)
+        print(f"\n✅ {year} 年度输入已保存：{len(patch)} 项")
+    result = settlement.compute_settlement(year)
+    checklist = settlement.settlement_checklist(year, result)
+    if args.json:
+        _print_json({"annual": annual, "inputs": inputs, "settlement": result, "checklist": checklist})
+        return 0
+    print(f"\n📊 {year} 年度企业所得税汇算辅助")
+    print("-" * 88)
+    print(f"  全年不含税收入：¥{float(annual.get('revenue_exclusive') or 0):,.2f}")
+    print(f"  全年费用：      ¥{float(annual.get('expense_total') or 0):,.2f}")
+    print(f"  会计利润：      ¥{float(result.get('accounting_profit') or 0):,.2f}")
+    print(f"  纳税调整增加：  ¥{float(result.get('manual_adjustment_add') or 0) + float(result.get('limit_adjustment_add') or 0):,.2f}"
+          f"（限额类 {float(result.get('limit_adjustment_add') or 0):,.2f}）")
+    print(f"  纳税调整减少：  ¥{float(result.get('manual_adjustment_reduce') or 0):,.2f}")
+    print(f"  研发加计扣除：  ¥{float(result.get('research_deduction') or 0):,.2f}")
+    print(f"  弥补以前年度亏损：¥{float(result.get('loss_used') or 0):,.2f}")
+    print(f"  应纳税所得额：  ¥{float(result.get('taxable_income') or 0):,.2f}")
+    print(f"  适用税率：      {float(result.get('applicable_rate') or 0) * 100:.0f}%"
+          f"（{'符合' if result.get('qualifies_small_low_profit') else '不符合'}小型微利条件）")
+    print(f"  应纳所得税：    ¥{float(result.get('corporate_tax') or 0):,.2f}")
+    print(f"  已预缴：        ¥{float(result.get('prepaid_tax') or 0):,.2f}")
+    print(f"  {result.get('payable_label') or '应补税额'}：¥{float(result.get('refund') or result.get('payable') or 0):,.2f}")
+    print("-" * 88)
+    for warning in result.get("warnings") or []:
+        print(f"  ⚠️ {warning}")
+    print("\n  汇算检查清单：")
+    for item in checklist:
+        icon = {"PASS": "✅", "WARNING": "⚠️", "ERROR": "❌"}.get(str(item.get("status")), "•")
+        print(f"    {icon} {item.get('item')}：{item.get('message')}")
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def cmd_adjustment_add(args: argparse.Namespace) -> int:
+    """新增纳税调整项。"""
+    from ledger import settlement
+
+    record = settlement.add_adjustment(
+        args.year,
+        args.item_type,
+        args.direction,
+        args.amount,
+        accounting_amount=args.accounting_amount,
+        tax_amount=args.tax_amount,
+        basis=args.basis,
+        note=args.note or "",
+    )
+    print(f"\n✅ 已新增纳税调整：{record.get('item_type')}（{record.get('direction')} ¥{float(record.get('adjustment_amount') or 0):,.2f}）")
+    return 0
+
+
+def cmd_adjustments(args: argparse.Namespace) -> int:
+    """列出纳税调整项。"""
+    from ledger import settlement
+
+    rows = settlement.list_adjustments(args.year)
+    print(f"\n📋 {args.year} 年度纳税调整（{len(rows)} 项）")
+    print("-" * 92)
+    print(f"  {'编号':<10}{'项目':<16}{'方向':<6}{'调整金额':>12}  依据")
+    for row in rows:
+        print(f"  {str(row.get('id')):<10}{str(row.get('item_type'))[:14]:<16}{str(row.get('direction')):<6}"
+              f"{float(row.get('adjustment_amount') or 0):>12,.2f}  {str(row.get('basis') or '')[:30]}")
+    print("-" * 92)
+    return 0
+
+
+def cmd_adjustment_delete(args: argparse.Namespace) -> int:
+    from ledger import settlement
+
+    settlement.delete_adjustment(args.id)
+    print(f"🗑️ 已删除纳税调整 {args.id}")
+    return 0
+
+
+def cmd_loss_add(args: argparse.Namespace) -> int:
+    from ledger import settlement
+
+    record = settlement.add_loss(args.year, args.amount, used_amount=args.used or 0, note=args.note or "")
+    print(f"\n✅ 已登记亏损：{record.get('year')} 年度 ¥{float(record.get('loss_amount') or 0):,.2f}，"
+          f"到期 {record.get('expire_year')} 年")
+    return 0
+
+
+def cmd_losses(args: argparse.Namespace) -> int:
+    from ledger import settlement
+
+    rows = settlement.list_losses(args.year or None)
+    print("\n📋 亏损弥补台账")
+    print("-" * 84)
+    print(f"  {'编号':<10}{'亏损年度':<10}{'亏损额':>12}{'已弥补':>12}{'剩余':>12}{'到期年度':<10}")
+    for row in rows:
+        print(f"  {str(row.get('id')):<10}{str(row.get('year')):<10}{float(row.get('loss_amount') or 0):>12,.2f}"
+              f"{float(row.get('used_amount') or 0):>12,.2f}{float(row.get('remaining') or 0):>12,.2f}"
+              f"{str(row.get('expire_year')):<10}")
+    print("-" * 84)
+    return 0
+
+
+def cmd_cit_annual(args: argparse.Namespace) -> int:
+    """生成企业所得税年度申报辅助表并导出 Excel。"""
+    from filing import cit_annual
+
+    bundle = cit_annual.build_cit_annual_return(args.year)
+    path = cit_annual.export_cit_annual_excel(bundle, args.out or None)
+    summary = bundle.get("summary") or {}
+    print(f"\n📊 {args.year} 年度企业所得税申报辅助表：{summary.get('level') or '—'}")
+    print(f"  应纳税所得额 ¥{float((bundle.get('totals') or {}).get('taxable_income') or 0):,.2f}，"
+          f"应纳所得税 ¥{float((bundle.get('totals') or {}).get('corporate_tax') or 0):,.2f}")
+    print(f"📦 已导出：{path}")
+    print("  ⚠️ 实际申报请登录电子税务局完成（本表仅供核对与数据准备）。")
+    print(f"  {config.DISCLAIMER}")
+    return 0
 
 
 def cmd_employees(args: argparse.Namespace) -> int:
@@ -722,6 +856,48 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_regions = sub.add_parser("regions", help="列出地区预设（城建税税率）")
     p_regions.set_defaults(func=cmd_regions)
+
+    p_settlement = sub.add_parser("settlement", help="企业所得税汇算辅助（数据/输入/测算/检查清单）")
+    p_settlement.add_argument("--year", required=True, help="年度，如 2026")
+    p_settlement.add_argument("--save-inputs", nargs="*", default=[], metavar="KEY=VALUE",
+                              help="保存年度输入，如 entertainment_actual=10000 employees=5")
+    p_settlement.add_argument("--json", action="store_true")
+    p_settlement.set_defaults(func=cmd_settlement)
+
+    p_adj_add = sub.add_parser("adjustment-add", help="新增纳税调整项")
+    p_adj_add.add_argument("--year", required=True)
+    p_adj_add.add_argument("--item-type", required=True, help="如 业务招待费/税收罚款/免税收入")
+    p_adj_add.add_argument("--direction", required=True, choices=["调增", "调减"])
+    p_adj_add.add_argument("--amount", type=float, required=True)
+    p_adj_add.add_argument("--accounting-amount", type=float, default=0.0)
+    p_adj_add.add_argument("--tax-amount", type=float, default=0.0)
+    p_adj_add.add_argument("--basis", default="")
+    p_adj_add.add_argument("--note", default="")
+    p_adj_add.set_defaults(func=cmd_adjustment_add)
+
+    p_adjustments = sub.add_parser("adjustments", help="列出纳税调整项")
+    p_adjustments.add_argument("--year", required=True)
+    p_adjustments.set_defaults(func=cmd_adjustments)
+
+    p_adj_delete = sub.add_parser("adjustment-delete", help="删除纳税调整项")
+    p_adj_delete.add_argument("--id", required=True)
+    p_adj_delete.set_defaults(func=cmd_adjustment_delete)
+
+    p_loss_add = sub.add_parser("loss-add", help="登记可弥补亏损")
+    p_loss_add.add_argument("--year", required=True, help="亏损年度")
+    p_loss_add.add_argument("--amount", type=float, required=True)
+    p_loss_add.add_argument("--used", type=float, default=0.0)
+    p_loss_add.add_argument("--note", default="")
+    p_loss_add.set_defaults(func=cmd_loss_add)
+
+    p_losses = sub.add_parser("losses", help="列出亏损弥补台账")
+    p_losses.add_argument("--year", default="")
+    p_losses.set_defaults(func=cmd_losses)
+
+    p_cit_annual = sub.add_parser("cit-annual", help="生成企业所得税年度申报辅助表（Excel）")
+    p_cit_annual.add_argument("--year", required=True)
+    p_cit_annual.add_argument("--out", default=None)
+    p_cit_annual.set_defaults(func=cmd_cit_annual)
 
     p_employees = sub.add_parser("employees", help="列出员工档案（个税扣缴）")
     p_employees.add_argument("--status", default="在职", help="在职/离职，留空表示全部")

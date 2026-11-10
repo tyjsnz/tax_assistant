@@ -149,7 +149,7 @@ class TestPeriods:
         assert overview["status"] == "未结账"
         checklist = overview["checklist"]
         assert set(checklist) >= {"ok", "level", "total", "pass", "warning", "error"}
-        assert checklist["total"] == 10
+        assert checklist["total"] == 11
 
 
 # =============================================================================
@@ -314,6 +314,30 @@ class TestPayrollStatusCheck:
         check = next(item for item in report["checks"] if item["key"] == "payroll_status")
         assert check["status"] == "WARNING"
         assert "草稿工资" in check["message"]
+
+
+class TestAnnualSettlementCheck:
+    """closing.checks 增量：annual_settlement（12 月结账提示汇算期限）。"""
+
+    def test_pass_for_non_december(self):
+        report = closing.pre_close_checks("2026-05")
+        check = next(item for item in report["checks"] if item["key"] == "annual_settlement")
+        assert check["status"] == "PASS"
+        assert "非年度末" in check["message"]
+
+    def test_warning_for_december(self):
+        report = closing.pre_close_checks("2026-12")
+        check = next(item for item in report["checks"] if item["key"] == "annual_settlement")
+        assert check["status"] == "WARNING"
+        assert "2027-05-31" in check["message"]
+        assert "汇算清缴" in check["fix_hint"]
+        assert check not in report["blocking"]  # WARNING 不阻塞结账
+
+    def test_warning_for_q4(self):
+        report = closing.pre_close_checks("2026Q4")
+        check = next(item for item in report["checks"] if item["key"] == "annual_settlement")
+        assert check["status"] == "WARNING"
+        assert "2027-05-31" in check["message"]
 
 
 # =============================================================================

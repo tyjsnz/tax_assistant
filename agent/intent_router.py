@@ -29,6 +29,7 @@ INTENTS: dict[str, str] = {
     "calc_vat": "增值税及附加计算",
     "calc_corp_tax": "企业所得税年度测算",
     "calc_cit_prepay": "企业所得税季度预缴",
+    "cit_settlement": "企业所得税年度汇算清缴",
     "calc_rd": "研发费用归集与加计扣除",
     "calc_stamp_tax": "印花税计算",
     "iit": "个人所得税扣缴（工资薪金累计预扣）",
@@ -100,9 +101,19 @@ _RULES: list[tuple[str, list[str], list[str]]] = [
         ["增值税", "普票", "专票", "怎么算", "要交多少", "应缴", "算税", "交多少税"],
     ),
     (
+        "cit_settlement",
+        [r"汇算清缴", r"(?:企业所得税|所得税).{0,6}年度", r"年度(?:企业)?所得税",
+         r"纳税调整", r"调增|调减", r"亏损(?:弥补|结转)",
+         r"业务招待费", r"广告费|广告费和业务宣传费|广宣费", r"三项经费",
+         r"职工福利费|职工教育经费|工会经费"],
+        ["汇算清缴", "年度汇算", "纳税调整", "调增", "调减", "亏损弥补", "亏损结转",
+         "业务招待费", "广告费", "广告费和业务宣传费", "广宣费", "三项经费",
+         "职工福利费", "职工教育经费", "工会经费", "企业所得税年度", "年度所得税"],
+    ),
+    (
         "calc_corp_tax",
-        [r"企业所得税", r"汇算清缴", r"年度.{0,4}(?:所得税|纳税)", r"小型微利"],
-        ["企业所得税", "汇算清缴", "所得税", "年度汇算", "小型微利"],
+        [r"企业所得税", r"年度.{0,4}(?:所得税|纳税)", r"小型微利"],
+        ["企业所得税", "所得税", "小型微利", "年度测算"],
     ),
     (
         "calc_cit_prepay",
@@ -424,6 +435,17 @@ def extract_months_declared(text: str) -> int | None:
     return None
 
 
+def extract_year(text: str) -> str | None:
+    """抽取纳税年度（``2026``）；未提及时返回 None。"""
+    raw = (text or "").translate(_FULLWIDTH)
+    match = re.search(r"(20\d{2})\s*(?:年|年度)", raw)
+    if not match:
+        match = re.search(r"(?<!\d)(20\d{2})(?!\d)", raw)
+    if match:
+        return match.group(1)
+    return None
+
+
 # =============================================================================
 # 其他实体
 # =============================================================================
@@ -500,6 +522,7 @@ def _keywords(text: str) -> list[str]:
         "申报", "红利账单", "专票", "普票", "未开票", "分录", "凭证", "台账", "截止日",
         "技术合同", "技术转让", "工资", "社保", "房租", "差旅", "办公", "折旧",
         "个税", "个人所得税", "工资薪金", "专项附加扣除", "减除费用", "预扣", "累计预扣", "五险一金",
+        "汇算清缴", "纳税调整", "亏损弥补", "业务招待费", "广告费", "三项经费", "应补退",
     )
     raw = text or ""
     return [word for word in lexicon if word in raw]
@@ -518,7 +541,7 @@ def extract_entities(text: str) -> dict[str, Any]:
     返回
     ----
     ``{"amounts": [float], "amount": float|None, "date": "YYYY-MM-DD", "period": "2026Q1",
-       "months_declared": int|None, "client": str, "invoice_type": str, "category": str,
+       "months_declared": int|None, "year": str|None, "client": str, "invoice_type": str, "category": str,
        "is_rd_related": bool, "keywords": [str]}``
     """
     raw = text or ""
@@ -529,6 +552,7 @@ def extract_entities(text: str) -> dict[str, Any]:
         "date": extract_date(raw),
         "period": extract_period(raw),
         "months_declared": extract_months_declared(raw),
+        "year": extract_year(raw),
         "client": extract_client(raw),
         "invoice_type": _invoice_type(raw),
         "category": extract_category(raw),
@@ -546,6 +570,13 @@ _CONSULT_RE = re.compile(
 )
 #: 明确的计算意图（要求算出税额）
 _CALC_INTENT_RE = re.compile(r"怎么算|如何算|计算|要交多少|交多少|应缴|算一下|缴多少|多少税|算算|帮我算")
+
+
+#: 企业所得税汇算 / 纳税调整专业词（强特征，命中时提高 cit_settlement 权重）
+_SETTLEMENT_DOMAIN_RE = re.compile(
+    r"汇算清缴|纳税调整|亏损弥补|亏损结转|业务招待费|广告费|广告费和业务宣传费|广宣费|"
+    r"三项经费|职工福利费|职工教育经费|工会经费"
+)
 
 
 def _score_rules(text: str) -> list[tuple[int, str, list[str]]]:
@@ -577,6 +608,13 @@ def _score_rules(text: str) -> list[tuple[int, str, list[str]]]:
                 hits.append(keyword)
         if is_consult and not has_amount and intent in calc_intents:
             score = max(0, score - 3)
+        if intent == "cit_settlement" and _SETTLEMENT_DOMAIN_RE.search(raw):
+            # 汇算清缴 / 纳税调整等专业词是强特征，避免被「怎么算」「要交多少」误路由到增值税
+            score += 3
+            hits.append("domain:settlement")
+            if re.search(r"政策|规定|文件|公告|文号|依据", raw) and not has_calc_intent:
+                # 「汇算清缴政策是什么」属于政策咨询，降权让 policy 优先
+                score = max(0, score - 3)
         scored.append((score, intent, hits))
     scored.sort(key=lambda item: -item[0])
     return scored
@@ -813,6 +851,90 @@ def _iit_arguments(text: str, entities: dict[str, Any]) -> dict[str, Any]:
     return args
 
 
+def _scaled_amount(number_text: str, unit: str | None) -> float:
+    """「数字 + 万/千」转换为元。"""
+    try:
+        value = float(str(number_text).replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+    if unit == "万":
+        value *= 10_000
+    elif unit == "千":
+        value *= 1_000
+    return round(value, 2)
+
+
+def _cit_settlement_arguments(text: str, entities: dict[str, Any]) -> dict[str, Any]:
+    """把年度汇算相关表述转换为 ``calc_cit_settlement`` 工具参数。"""
+    raw = text or ""
+    year = str(entities.get("year") or _today().year)
+    args: dict[str, Any] = {"year": year}
+
+    revenue = _amount_near_keyword(raw, r"营业收入|收入|销售额|营业额")
+    cost = _amount_near_keyword(raw, r"成本费用|成本|费用总额|总成本")
+    profit = _amount_near_keyword(raw, r"会计利润|利润总额|利润")
+    salary = _amount_near_keyword(raw, r"工资薪金|工资总额|薪酬总额|工资")
+    entertainment = _amount_near_keyword(raw, r"业务招待费")
+    advertising = _amount_near_keyword(raw, r"广告费和业务宣传费|业务宣传费|广告费|广宣费")
+    welfare = _amount_near_keyword(raw, r"职工福利费|福利费")
+    education = _amount_near_keyword(raw, r"职工教育经费|教育经费")
+    union = _amount_near_keyword(raw, r"工会经费")
+    rd = _amount_near_keyword(raw, r"研发费用加计扣除|加计扣除|研发加计")
+    prepaid = _amount_near_keyword(raw, r"已预缴|预缴税额|预缴所得税|已缴所得税|已预缴税款")
+    employees = _amount_near_keyword(raw, r"从业人数|员工人数|职工人数")
+    assets = _amount_near_keyword(raw, r"资产总额|总资产")
+
+    for key, value in (
+        ("revenue_exclusive", revenue),
+        ("cost_total", cost),
+        ("accounting_profit", profit),
+        ("salary_total", salary),
+        ("entertainment", entertainment),
+        ("advertising", advertising),
+        ("welfare", welfare),
+        ("education", education),
+        ("union_actual", union),
+        ("rd_deduction", rd),
+        ("prepaid_tax", prepaid),
+        ("total_assets", assets),
+    ):
+        if value is not None:
+            args[key] = value
+    if employees is not None:
+        args["employees"] = int(employees)
+
+    # 手工调增 / 调减：支持「调增 5 万」「5 万元调增」两种语序
+    adjustments: list[dict[str, Any]] = []
+    simple_number = r"(\d+(?:\.\d+)?)\s*(万|千)?"
+    for match in re.finditer(rf"(调增|调减)[^0-9]{{0,10}}?{simple_number}", raw):
+        direction = match.group(1)
+        amount = _scaled_amount(match.group(2), match.group(3))
+        if amount > 0:
+            adjustments.append({"item_type": "纳税调整（对话识别）", "direction": direction, "adjustment_amount": amount})
+    for match in re.finditer(rf"{simple_number}\s*元?\s*(?:做|作)?\s*(调增|调减)", raw):
+        direction = match.group(3)
+        amount = _scaled_amount(match.group(1), match.group(2))
+        if amount > 0 and not any(item["adjustment_amount"] == amount for item in adjustments):
+            adjustments.append({"item_type": "纳税调整（对话识别）", "direction": direction, "adjustment_amount": amount})
+    if adjustments:
+        args["extra_adjustments"] = adjustments
+
+    # 以前年度亏损：识别「2024 年亏损 10 万」「去年亏损 8 万」
+    loss_amount = _amount_near_keyword(raw, r"亏损")
+    if loss_amount is not None:
+        loss_year = int(year) - 1
+        if "前年" in raw:
+            loss_year = int(year) - 2
+        elif re.search(r"去年|上年度?", raw):
+            loss_year = int(year) - 1
+        else:
+            match = re.search(r"(\d{4})\s*年[^。；;]{0,4}?亏损", raw)
+            if match:
+                loss_year = int(match.group(1))
+        args["losses"] = [{"year": str(loss_year), "loss_amount": loss_amount, "used_amount": 0}]
+    return args
+
+
 def route(text: str) -> dict[str, Any]:
     """把用户输入路由到具体工具，返回 ``{"intent", "tool", "arguments", "reply_hint"}``。
 
@@ -857,6 +979,14 @@ def route(text: str) -> dict[str, Any]:
         if period:
             arguments["period"] = period
         reply_hint = "调用 calc_cit_prepay 计算季度企业所得税预缴额（本年累计口径）。"
+
+    elif intent == "cit_settlement":
+        tool = "calc_cit_settlement"
+        arguments.update(_cit_settlement_arguments(text or "", entities))
+        reply_hint = (
+            "调用 calc_cit_settlement 测算年度企业所得税汇算清缴：限额类纳税调整（业务招待费/广告费/三项经费）、"
+            "调增调减、研发加计扣除、亏损弥补与小型微利优惠，并提醒次年 5 月 31 日前申报与资料准备。"
+        )
 
     elif intent == "calc_rd":
         tool = "calc_rd_deduction"

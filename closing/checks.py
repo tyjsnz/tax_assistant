@@ -15,6 +15,7 @@ no_unmatched_ingest    无待匹配发票/流水/待确认匹配建议          
 invoice_duplicates     期间内发票号码无重复                        ERROR
 policy_period          期间在已验证政策区间                        WARNING
 payroll_status         工资表状态（无工资/草稿/已确认）              WARNING
+annual_settlement      12 月结账提示次年汇算清缴期限                  WARNING
 =====================  ==========================================  ========
 
 返回结构见 :func:`pre_close_checks`；``blocking`` 为 ERROR 列表，``warnings`` 为 WARNING 列表。
@@ -47,6 +48,7 @@ CHECK_KEYS: tuple[str, ...] = (
     "invoice_duplicates",
     "policy_period",
     "payroll_status",
+    "annual_settlement",
 )
 
 CHECK_NAMES: dict[str, str] = {
@@ -60,6 +62,7 @@ CHECK_NAMES: dict[str, str] = {
     "invoice_duplicates": "期间内发票无重复",
     "policy_period": "期间在已验证政策区间",
     "payroll_status": "工资表与个税状态",
+    "annual_settlement": "年度汇算清缴提示",
 }
 
 
@@ -328,6 +331,26 @@ def _check_payroll_status(period: str) -> dict[str, Any]:
     )
 
 
+def _check_annual_settlement(period: str) -> dict[str, Any]:
+    """12 月结账时提示次年 5 月 31 日前完成企业所得税汇算清缴（不阻塞结账）。"""
+    month = period[5:7] if len(period) >= 7 and period[4] == "-" else ""
+    quarter = period[-2:].upper() if "Q" in period.upper() else ""
+    if month != "12" and quarter != "Q4":
+        return _check(
+            "annual_settlement",
+            "PASS",
+            f"{period} 非年度末期间，无需汇算清缴提醒。",
+        )
+    year = period[:4]
+    deadline = f"{int(year) + 1}-05-31"
+    return _check(
+        "annual_settlement",
+        "WARNING",
+        f"{year} 年度已到年末，请在 {deadline} 前完成 {year} 年度企业所得税汇算清缴（年度申报 A 类）。",
+        "请在「📊 汇算清缴」页面准备年度数据、纳税调整与亏损弥补，并对照电子税务局年度申报表核对。",
+    )
+
+
 def _check_policy_period(period: str) -> dict[str, Any]:
     start, _ = period_range(period)
     if VERIFIED_FROM <= start <= VERIFIED_TO:
@@ -349,7 +372,7 @@ def _check_policy_period(period: str) -> dict[str, Any]:
 # 对外接口
 # =============================================================================
 def pre_close_checks(period: Any) -> dict[str, Any]:
-    """执行结账前 10 项检查，返回汇总报告（含 ``blocking`` / ``warnings``）。
+    """执行结账前 11 项检查，返回汇总报告（含 ``blocking`` / ``warnings``）。
 
     返回结构::
 
@@ -368,6 +391,7 @@ def pre_close_checks(period: Any) -> dict[str, Any]:
         _check_invoice_duplicates(text),
         _check_policy_period(text),
         _check_payroll_status(text),
+        _check_annual_settlement(text),
     ]
     blocking = [check for check in checks if check["status"] == "ERROR"]
     warnings = [check for check in checks if check["status"] == "WARNING"]

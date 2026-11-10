@@ -263,6 +263,9 @@ def test_intents_cover_required_eight():
         ("个税怎么算", "iit"),
         ("月薪1.5万，这个月个税怎么算", "iit"),
         ("专项附加扣除怎么算个税", "iit"),
+        ("2026年度企业所得税汇算清缴怎么算", "cit_settlement"),
+        ("纳税调整怎么做", "cit_settlement"),
+        ("业务招待费税前扣除限额是多少", "cit_settlement"),
     ],
 )
 def test_detect_intent(text, expected):
@@ -392,6 +395,47 @@ def test_iit_intent_does_not_conflict():
     assert detect_intent("个税申报截止日是什么时候")["intent"] == "calendar"
 
 
+def test_cit_settlement_entities_and_route():
+    """汇算清缴意图抽取年度/收入/成本/限额/亏损/预缴并路由到 calc_cit_settlement。"""
+    entities = extract_entities("2026年度企业所得税汇算清缴")
+    assert entities["year"] == "2026"
+
+    assert extract_entities("汇算清缴怎么算")["year"] is None
+
+    routed = route(
+        "2026年度汇算清缴，收入100万，成本60万，工资20万，业务招待费3万，广告费20万，已预缴2万"
+    )
+    assert routed["intent"] == "cit_settlement"
+    assert routed["tool"] == "calc_cit_settlement"
+    arguments = routed["arguments"]
+    assert arguments["year"] == "2026"
+    assert arguments["revenue_exclusive"] == 1_000_000.0
+    assert arguments["cost_total"] == 600_000.0
+    assert arguments["salary_total"] == 200_000.0
+    assert arguments["entertainment"] == 30_000.0
+    assert arguments["advertising"] == 200_000.0
+    assert arguments["prepaid_tax"] == 20_000.0
+    assert routed["reply_hint"]
+
+    with_loss = route("2025年汇算清缴，利润50万，去年亏损10万，调增5万")
+    assert with_loss["arguments"]["accounting_profit"] == 500_000.0
+    assert with_loss["arguments"]["losses"] == [{"year": "2024", "loss_amount": 100_000.0, "used_amount": 0}]
+    assert with_loss["arguments"]["extra_adjustments"][0]["direction"] == "调增"
+    assert with_loss["arguments"]["extra_adjustments"][0]["adjustment_amount"] == 50_000.0
+
+    assert route("汇算清缴怎么弄")["arguments"]["year"] == str(config.today().year)
+
+
+def test_cit_settlement_intent_does_not_conflict():
+    """新增汇算清缴意图不得影响既有意图。"""
+    assert detect_intent("算一下企业所得税，年利润20万")["intent"] == "calc_corp_tax"
+    assert detect_intent("企业所得税季度预缴怎么算")["intent"] == "calc_cit_prepay"
+    assert detect_intent("这个季度开了8万普票，增值税怎么算？")["intent"] == "calc_vat"
+    assert detect_intent("研发费用加计扣除比例是多少")["intent"] == "calc_rd"
+    assert detect_intent("个税怎么算")["intent"] == "iit"
+    assert detect_intent("小规模现在增值税税率多少？")["intent"] == "policy"
+
+
 def test_detect_intent_llm_fallback(monkeypatch):
     class FakeClient:
         configured = True
@@ -426,13 +470,14 @@ def test_detect_intent_llm_failure_falls_back(monkeypatch):
 def test_tool_specs_and_names():
     specs = tool_specs()
     assert [spec["function"]["name"] for spec in specs] == TOOL_NAMES
-    assert len(TOOL_NAMES) == 14
+    assert len(TOOL_NAMES) == 15
     assert "calc_iit" in TOOL_NAMES
+    assert "calc_cit_settlement" in TOOL_NAMES
     for spec in specs:
         assert spec["type"] == "function"
         assert spec["function"]["description"]
         assert spec["function"]["parameters"]["type"] == "object"
-    assert len(describe_tools()) == 14
+    assert len(describe_tools()) == 15
 
 
 def test_call_tool_unknown_and_missing_params():
@@ -599,6 +644,94 @@ def test_calc_iit_tool_missing_params():
     assert "months_declared" in bad_months["error"]
 
 
+def test_calc_cit_settlement_tool_basic():
+    result = call_tool(
+        "calc_cit_settlement",
+        {
+            "year": "2026",
+            "revenue_exclusive": 1_000_000,
+            "cost_total": 600_000,
+            "salary_total": 200_000,
+            "entertainment": 30_000,
+            "advertising": 200_000,
+            "welfare": 30_000,
+            "education": 20_000,
+            "union_actual": 6_000,
+            "rd_deduction": 50_000,
+            "prepaid_tax": 20_000,
+            "employees": 20,
+            "total_assets": 2_000_000,
+        },
+    )
+    assert result["ok"] is True, result["error"]
+    data = result["data"]
+    # 限额类调增：招待 25,000 + 广宣 50,000 + 福利 2,000 + 教育 4,000 + 工会 2,000 = 83,000
+    assert data["limit_adjustment_add"] == 83_000.0
+    assert data["taxable_income"] == 433_000.0
+    assert data["qualifies_small_low_profit"] is True
+    assert data["applicable_rate"] == 0.05
+    assert data["corporate_tax"] == 21_650.0
+    assert data["prepaid_tax"] == 20_000.0
+    assert data["payable"] == 1_650.0
+    assert data["payable_label"] == "应补税额"
+    assert data["disclaimer"] == config.DISCLAIMER
+    display = result["display"]
+    assert "应纳税所得额" in display
+    assert "应补税额" in display
+    assert "5 月 31 日" in display
+    assert "财政部 税务总局公告2023年第12号" in display
+    assert config.DISCLAIMER in display
+
+
+def test_calc_cit_settlement_tool_loss_and_manual_adjustments():
+    result = call_tool(
+        "calc_cit_settlement",
+        {
+            "year": "2026",
+            "accounting_profit": 100_000,
+            "extra_adjustments": [
+                {"item_type": "罚款支出", "direction": "调增", "adjustment_amount": 5_000},
+                {"item_type": "免税收入", "direction": "调减", "adjustment_amount": 3_000},
+            ],
+            "losses": [{"year": "2024", "loss_amount": 20_000, "used_amount": 0}],
+            "prepaid_tax": 1_000,
+        },
+    )
+    assert result["ok"] is True, result["error"]
+    data = result["data"]
+    assert data["manual_adjustment_add"] == 5_000.0
+    assert data["manual_adjustment_reduce"] == 3_000.0
+    assert data["loss_used"] == 20_000.0
+    assert data["taxable_income"] == 82_000.0  # 100,000 + 5,000 − 3,000 − 20,000
+    assert data["corporate_tax"] == 4_100.0
+
+    refund = call_tool(
+        "calc_cit_settlement",
+        {"year": "2026", "accounting_profit": 100_000, "prepaid_tax": 10_000},
+    )
+    assert refund["ok"] is True
+    assert refund["data"]["payable_label"] == "应退税额"
+    assert refund["data"]["refund"] == 5_000.0
+    assert "应退税额" in refund["display"]
+
+
+def test_calc_cit_settlement_tool_missing_and_invalid():
+    missing = call_tool("calc_cit_settlement", {"year": "2026"})
+    assert missing["ok"] is False
+    assert "revenue_exclusive" in missing["error"] or "accounting_profit" in missing["error"]
+
+    bad_year = call_tool("calc_cit_settlement", {"year": "abc", "revenue_exclusive": 100})
+    assert bad_year["ok"] is False
+    assert "year" in bad_year["error"]
+
+    bad_adjustments = call_tool(
+        "calc_cit_settlement",
+        {"year": "2026", "revenue_exclusive": 100, "extra_adjustments": "不是数组"},
+    )
+    assert bad_adjustments["ok"] is False
+    assert "extra_adjustments" in bad_adjustments["error"]
+
+
 # =============================================================================
 # orchestrator：本地降级
 # =============================================================================
@@ -659,6 +792,37 @@ def test_local_reply_iit_missing_income():
     assert "累计" in reply
     assert "已实际申报月份数" in reply
     assert "零申报" in reply
+    assert config.DISCLAIMER in reply
+
+
+def test_local_reply_cit_settlement():
+    result = orchestrator.local_reply(
+        "2026年度汇算清缴，收入100万，成本60万，工资20万，业务招待费3万，广告费20万，已预缴2万"
+    )
+    assert result["intent"] == "cit_settlement"
+    assert result["used_llm"] is False
+    assert result["tool_calls"][0]["name"] == "calc_cit_settlement"
+    assert result["tool_calls"][0]["result"]["ok"] is True
+    reply = result["reply"]
+    assert "应纳税所得额" in reply
+    assert "应补税额" in reply
+    assert "5 月 31 日" in reply
+    assert "亏损" in reply and "5 年" in reply
+    assert "小型微利企业" in reply and "5%" in reply
+    assert "资料准备" in reply
+    assert config.DISCLAIMER in reply
+
+
+def test_local_reply_cit_settlement_missing_data():
+    result = orchestrator.local_reply("汇算清缴怎么弄")
+    assert result["intent"] == "cit_settlement"
+    assert result["tool_calls"][0]["name"] == "calc_cit_settlement"
+    assert result["tool_calls"][0]["result"]["ok"] is False
+    reply = result["reply"]
+    assert "5 月 31 日" in reply
+    assert "纳税调增" in reply or "调增" in reply
+    assert "亏损" in reply
+    assert "资料准备" in reply
     assert config.DISCLAIMER in reply
 
 

@@ -17,6 +17,7 @@ PAGE_PAYROLL = "👥 员工与工资"
 PAGE_INGEST = "📥 票据与流水"
 PAGE_CALCULATOR = "🧮 算税工作台"
 PAGE_FILING = "📋 申报填报"
+PAGE_SETTLEMENT = "📊 汇算清缴"
 PAGE_CHECK = "🔍 申报核对"
 PAGE_POLICIES = "📚 政策知识库"
 PAGE_ASSISTANT = "🤖 AI 助手"
@@ -30,6 +31,7 @@ PAGES: list[tuple[str, str]] = [
     (PAGE_INGEST, "ui.views.ingest"),
     (PAGE_CALCULATOR, "ui.views.calculator"),
     (PAGE_FILING, "ui.views.filing"),
+    (PAGE_SETTLEMENT, "ui.views.settlement"),
     (PAGE_CHECK, "ui.views.check"),
     (PAGE_POLICIES, "ui.views.policies"),
     (PAGE_ASSISTANT, "ui.views.assistant"),
