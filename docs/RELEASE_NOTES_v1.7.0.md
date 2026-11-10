@@ -59,3 +59,4 @@
 - [个税扣缴辅助表](screenshots/26_p1b_iit_return.png)
 - [汇算清缴](screenshots/28_p1c_settlement_annual.png)
 - [年度申报辅助表](screenshots/30_p1c_cit_annual.png)
+- [工商年报 / 残保金辅助](screenshots/32_p1d_annual_other.png)
