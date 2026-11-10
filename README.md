@@ -8,6 +8,15 @@
 > ⚠️ 本系统为辅助工具，算税与申报结果**仅供参考，以主管税务机关核定为准**。
 > 正式申报请登录电子税务局完成；涉及重大涉税决策建议咨询专业财税机构。
 
+![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Version](https://img.shields.io/badge/version-1.6.0-informational)
+
+📖 **文档**：[快速开始](docs/QUICKSTART.md) · [使用指南](docs/USER_GUIDE.md) ·
+[部署](docs/DEPLOYMENT.md) · [架构](docs/ARCHITECTURE.md) · [安全](SECURITY.md) ·
+[路线图](docs/ROADMAP.md) · [常见问题](docs/FAQ.md)
+
 ---
 
 ## 目录
@@ -120,7 +129,10 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 # 2) 安装依赖
 pip install -r requirements.txt
 
-# 3) 启动系统（推荐使用 .venv 内的 streamlit）
+# 3)（可选）生成演示账套：虚构公司 + 全年数据，快速体验完整流程
+.venv/bin/python scripts/seed_demo.py --reset
+
+# 4) 启动系统（推荐使用 .venv 内的 streamlit）
 .venv/bin/streamlit run ui/streamlit_app.py
 ```
 
@@ -234,6 +246,10 @@ API 地址默认 `https://api.deepseek.com`（兼容 OpenAI 协议），如有�
 tax/
 ├── README.md                  # 本文档
 ├── requirements.txt
+├── Makefile                   # 常用命令（setup/test/run/demo/docker）
+├── CHANGELOG.md               # 版本记录
+├── SECURITY.md                # 安全与合规说明
+├── scripts/seed_demo.py       # 演示账套生成脚本（虚构数据）
 ├── LICENSE                    # Apache-2.0
 ├── Dockerfile                 # 一键部署（容器内数据挂载 /app/data）
 ├── CONTRIBUTING.md            # 贡献指南
@@ -322,7 +338,15 @@ tax/
 ├── logs/                      # 审计日志 CSV
 ├── exports/                   # 导出的申报包
 ├── examples/                  # 示例发票 XML 与银行流水 CSV（可导入试用）
-├── docs/
+├── docs/                      # 文档集（索引见 docs/README.md）
+│   ├── README.md              # 文档索引
+│   ├── QUICKSTART.md          # 5 分钟上手
+│   ├── USER_GUIDE.md          # 11 个页面使用指南
+│   ├── DEPLOYMENT.md          # 部署/多公司/备份/升级
+│   ├── ARCHITECTURE.md        # 架构与扩展指南
+│   ├── FAQ.md                 # 常见问题
+│   ├── ROADMAP.md             # 路线图与完成状态
+│   ├── RELEASE.md             # 发布检查清单
 │   ├── CONTRACTS.md           # 模块接口契约
 │   ├── CONTRACTS_INGEST.md    # 票据/流水导入模块契约
 │   ├── CONTRACTS_P0_3.md      # 结账/归档/备份模块契约
@@ -515,6 +539,8 @@ data/
 - **许可证**：Apache-2.0（见 [LICENSE](LICENSE)），允许商用与二次开发，保留版权与免责声明；
 - **Docker**：`docker build -t tax-agent . && docker run -p 8501:8501 -v $(pwd)/data:/app/data tax-agent`（数据目录挂载持久化；容器内无 macOS Vision OCR，签名/截图识别请用 XML/OFD 或手动粘贴）；
 - **CI**：GitHub Actions 在 Python 3.11 / 3.12 上跑离线全量 pytest（`.github/workflows/ci.yml`）；
+- **文档**：见 [docs/README.md](docs/README.md)（快速开始/使用指南/部署/架构/FAQ/路线图/发布清单）；
+- **演示数据**：`python scripts/seed_demo.py --reset` 生成虚构演示公司（可随时删除），用于快速体验；
 - **贡献**：见 [CONTRIBUTING.md](CONTRIBUTING.md)；政策变更请按 [docs/POLICY_MAINTENANCE.md](docs/POLICY_MAINTENANCE.md) 追加版本；
 - **合规声明**：本项目不是代理记账机构、不做税务鉴证，不代替电子税务局申报；所有结果仅供参考，以主管税务机关核定为准。
 

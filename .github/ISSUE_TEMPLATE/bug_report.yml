@@ -1,0 +1,38 @@
+name: Bug 报告
+description: 反馈可复现的问题（请勿在此披露安全漏洞）
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请先确认使用的是最新版本，并勿在公开 Issue 中粘贴真实客户/财务数据或 API Key。
+        安全漏洞请通过 SECURITY.md 中的私有渠道报告。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 发生了什么？期望是什么？
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开页面 ...
+        2. 点击 ...
+        3. 出现 ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / 环境
+      description: 设置页「关于」中的版本号；操作系统与 Python 版本
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志/截图（脱敏）
+      description: 可附终端报错或截图，请先删除真实金额/客户名/API Key
