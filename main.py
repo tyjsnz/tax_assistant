@@ -7,6 +7,8 @@ Web 界面是主要使用方式（``.venv/bin/streamlit run ui/streamlit_app.py`
     python main.py file --period 2026Q1 --out exports/
     python main.py calendar --days 45
     python main.py demo
+    python main.py ingest --invoices examples/invoices/*.xml --bank examples/bank/*.csv --confirm-score 90
+    python main.py pool
     python main.py chat
 """
 
@@ -123,6 +125,80 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ingest(args: argparse.Namespace) -> int:
+    """导入发票 / 银行流水，可选自动匹配并按分数确认入账。"""
+    from ingest import importer, matcher
+
+    files: list[tuple[str, bytes]] = []
+    for pattern in list(args.invoices or []) + list(args.bank or []):
+        for path in sorted(Path().glob(pattern)) if any(ch in pattern for ch in "*?[") else [Path(pattern)]:
+            if not path.is_file():
+                print(f"⚠️ 文件不存在，已跳过：{path}")
+                continue
+            files.append((path.name, path.read_bytes()))
+    if not files:
+        print("请用 --invoices / --bank 指定要导入的文件（支持通配符，如 examples/invoices/*.xml）。")
+        return 1
+
+    result = importer.import_files(files, auto_match=not args.no_match)
+    print(f"\n📥 导入完成：文件 {result.get('files', len(files))} 个，"
+          f"发票 {result.get('invoices', 0)} 张，流水 {result.get('transactions', 0)} 笔")
+    for error in result.get("errors") or []:
+        print(f"  ❌ {error.get('file')}: {error.get('error')}")
+    for skipped in result.get("skipped") or []:
+        print(f"  - 跳过重复：{skipped.get('reason')}")
+
+    if args.confirm_score is not None:
+        suggestions = [match for match in matcher.list_matches() if match.get("status") == "建议"]
+        confirmed = 0
+        for match in suggestions:
+            if float(match.get("score") or 0) >= float(args.confirm_score):
+                try:
+                    matcher.confirm_match(match["id"])
+                    confirmed += 1
+                except ValueError as exc:
+                    print(f"  ⚠️ 确认失败：{exc}")
+        print(f"\n✅ 已按分数 ≥ {args.confirm_score} 自动确认入账 {confirmed} 笔匹配")
+    else:
+        summary = matcher.match_summary()
+        print(f"\n🔎 匹配建议：{summary.get('suggestions', 0)} 条，"
+              f"待匹配发票 {summary.get('invoices_pending', 0)} 张、流水 {summary.get('transactions_pending', 0)} 笔")
+        print("   在「📥 票据与流水」页面勾选确认，或加 --confirm-score 90 自动确认。")
+
+    if args.json:
+        _print_json(result)
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def cmd_pool(args: argparse.Namespace) -> int:
+    """查看票据池 / 流水池 / 匹配概览。"""
+    from ingest import importer, matcher
+
+    data = {"pool": importer.pool_summary(), "match": matcher.match_summary()}
+    if args.json:
+        _print_json(data)
+        return 0
+    pool = data["pool"]
+    invoices = pool.get("invoices") or {}
+    transactions = pool.get("transactions") or {}
+    matches = pool.get("matches") or {}
+    print("\n📊 票据与流水池")
+    print("-" * 52)
+    print(f"  发票池：{invoices.get('count', 0)} 张  状态 {invoices.get('by_status', {})}")
+    print(f"  流水池：{transactions.get('count', 0)} 笔  状态 {transactions.get('by_status', {})}")
+    print(f"  匹配：建议 {matches.get('by_status', {}).get('建议', 0)} 条，"
+          f"已确认 {matches.get('by_status', {}).get('已确认', 0)} 条")
+    match = data["match"]
+    income_amount = match.get("matched_income_amount", match.get("matched_income", 0)) or 0
+    expense_amount = match.get("matched_expense_amount", match.get("matched_expense", 0)) or 0
+    print(f"  已入账收入 ¥{float(income_amount):,.2f}（{match.get('matched_income', 0)} 笔），"
+          f"费用 ¥{float(expense_amount):,.2f}（{match.get('matched_expense', 0)} 笔）")
+    print("-" * 52)
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
 def cmd_chat(args: argparse.Namespace) -> int:
     from agent import orchestrator
 
@@ -180,6 +256,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_demo = sub.add_parser("demo", help="生成示例数据")
     p_demo.add_argument("--reset", action="store_true", help="先清空已有台账")
     p_demo.set_defaults(func=cmd_demo)
+
+    p_ingest = sub.add_parser("ingest", help="导入发票与银行流水（可选自动匹配入账）")
+    p_ingest.add_argument("--invoices", nargs="*", default=[], help="发票文件（xml/ofd/pdf，支持通配符）")
+    p_ingest.add_argument("--bank", nargs="*", default=[], help="银行流水文件（csv/xlsx，支持通配符）")
+    p_ingest.add_argument("--no-match", action="store_true", help="仅导入，不自动生成匹配建议")
+    p_ingest.add_argument("--confirm-score", type=float, default=None, metavar="N",
+                          help="自动确认匹配分 ≥ N 的建议并入账（如 90）")
+    p_ingest.add_argument("--json", action="store_true", help="输出 JSON")
+    p_ingest.set_defaults(func=cmd_ingest)
+
+    p_pool = sub.add_parser("pool", help="查看票据池 / 流水池 / 匹配概览")
+    p_pool.add_argument("--json", action="store_true", help="输出 JSON")
+    p_pool.set_defaults(func=cmd_pool)
 
     p_chat = sub.add_parser("chat", help="命令行 AI 对话")
     p_chat.set_defaults(func=cmd_chat)

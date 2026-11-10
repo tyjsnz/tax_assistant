@@ -18,6 +18,7 @@ APP_PATH = str(Path(__file__).resolve().parents[1] / "ui" / "streamlit_app.py")
 PAGES = [
     "🏠 首页驾驶舱",
     "📒 台账管理",
+    "📥 票据与流水",
     "🧮 算税工作台",
     "📋 申报填报",
     "🔍 申报核对",
@@ -45,7 +46,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 8 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 9 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     radio = at.radio(key="nav")
@@ -140,3 +141,79 @@ def test_settings_masks_api_key() -> None:
     assert api_input is not None, "设置页应提供 API Key 输入框"
     assert api_input.value == "", "API Key 输入框不应回显明文"
     assert not at.error
+
+
+def test_ingest_page_renders_empty() -> None:
+    """票据与流水：空数据下正常渲染上传区、匹配区、池 tabs 与免责声明。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("📥 票据与流水").run()
+    _assert_clean(at, "票据与流水（空数据）")
+
+    labels = [button.label for button in at.button]
+    assert any("一键加载示例" in label for label in labels), "应提供「一键加载示例票据/流水」按钮"
+    assert any("自动匹配" in label for label in labels), "应提供「自动匹配」按钮"
+    assert any("解析并入库" in label for label in labels), "应提供「解析并入库」按钮"
+    assert any("导入流水" in label for label in labels), "应提供「导入流水」按钮"
+    assert len(at.file_uploader) >= 2, "应提供发票与银行流水两个上传控件"
+    tab_labels = [tab.label for tab in at.tabs]
+    assert any("发票池" in label for label in tab_labels)
+    assert any("银行流水池" in label for label in tab_labels)
+    html_text = "\n".join(element.value for element in at.html)
+    assert "仅供参考" in html_text, "票据页底部必须展示免责声明"
+
+
+def test_ingest_load_demo_pool() -> None:
+    """票据与流水：点击「一键加载示例」后票据池/流水池有数据、生成匹配建议，且无异常。"""
+    pytest.importorskip("ingest.demo")
+    import ledger
+
+    at = _new_app()
+    at.radio(key="nav").set_value("📥 票据与流水").run()
+    _assert_clean(at, "票据与流水（加载示例前）")
+    demo_buttons = [button for button in at.button if "一键加载示例" in button.label]
+    assert demo_buttons, "应提供「一键加载示例票据/流水」按钮"
+    demo_buttons[0].click().run()
+    _assert_clean(at, "票据与流水（加载示例后）")
+
+    assert ledger.table("invoices").count() >= 2, "示例发票应已入库"
+    assert ledger.table("bank_transactions").count() >= 3, "示例流水应已入库"
+    assert ledger.table("matches").count() >= 1, "示例数据应生成匹配建议"
+    assert at.data_editor, "加载示例后应展示匹配建议/票据池表格"
+
+    # 再次点击自动匹配不崩溃（已存在的组合会跳过）
+    match_buttons = [button for button in at.button if "自动匹配" in button.label]
+    assert match_buttons
+    match_buttons[0].click().run()
+    _assert_clean(at, "票据与流水（自动匹配后）")
+
+
+def test_ingest_confirm_all_generates_ledger() -> None:
+    """票据与流水：加载示例 → 确认全部建议入账 → 台账出现收入/费用记录与凭证。"""
+    pytest.importorskip("ingest.demo")
+    pytest.importorskip("ingest.matcher")
+    import ledger
+
+    at = _new_app()
+    at.radio(key="nav").set_value("📥 票据与流水").run()
+    demo_buttons = [button for button in at.button if "一键加载示例" in button.label]
+    assert demo_buttons
+    demo_buttons[0].click().run()
+    _assert_clean(at, "票据与流水（确认前）")
+
+    before = ledger.table("income").count() + ledger.table("expense").count()
+    confirm_buttons = [button for button in at.button if "确认全部建议" in button.label]
+    assert confirm_buttons, "应提供「确认全部建议」批量入账按钮"
+    confirm_buttons[0].click().run()
+    _assert_clean(at, "票据与流水（确认入账后）")
+
+    after = ledger.table("income").count() + ledger.table("expense").count()
+    assert after > before, "确认匹配合成后台账应出现收入/费用记录"
+    booked = [
+        row
+        for row in ledger.table("invoices").read()
+        if str(row.get("status")) == "已入账"
+    ]
+    assert booked, "确认后发票状态应更新为「已入账」"
+    assert ledger.table("journal_entries").count() > 0, "确认后应生成记账凭证"
+    captions = "\n".join(caption.value for caption in at.caption)
+    assert "台账与凭证" in captions, "确认后应展示生成的台账与凭证号提示"

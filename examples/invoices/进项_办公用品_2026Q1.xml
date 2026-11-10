@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<EInvoice>
+  <Header>
+    <InvoiceNumber>26530100000087654321</InvoiceNumber>
+    <InvoiceType>电子发票（增值税专用发票）</InvoiceType>
+    <SpecificInvoiceMark>01</SpecificInvoiceMark>
+    <IssuTime>2026-02-03 09:12:00</IssuTime>
+    <SellerId>91530100MA6K12345A</SellerId>
+    <SellerName>昆明锐捷办公设备有限公司</SellerName>
+    <BuyerId>91530128059467473X</BuyerId>
+    <BuyerName>禄劝云睿网络科技开发有限公司</BuyerName>
+  </Header>
+  <EInvoiceData>
+    <BasicInformation>
+      <TotalAmWithoutTax>10000.00</TotalAmWithoutTax>
+      <TotalTaxAm>1300.00</TotalTaxAm>
+      <TotalTax-includedAmount>11300.00</TotalTax-includedAmount>
+    </BasicInformation>
+    <IssuItemInformation>
+      <ItemName>办公用品</ItemName>
+      <Amount>10000.00</Amount>
+      <TaxRate>0.13</TaxRate>
+      <TaxAm>1300.00</TaxAm>
+    </IssuItemInformation>
+  </EInvoiceData>
+</EInvoice>

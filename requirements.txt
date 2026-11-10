@@ -11,3 +11,6 @@ pytest>=8.0
 # 可选：本地 OCR（系统默认使用 macOS Vision / 手动粘贴文本，无需安装以下依赖）
 # pytesseract>=0.3.10
 # paddleocr>=2.7.0
+
+# 发票 PDF 文本解析（可选，缺失时降级为手动/XML）
+pypdf>=4.0

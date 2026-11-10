@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<EInvoice>
+  <Header>
+    <EIid>2-126010000000000001-260115102345678</EIid>
+    <InvoiceNumber>26530100000012345678</InvoiceNumber>
+    <InvoiceCode></InvoiceCode>
+    <InvoiceType>电子发票（普通发票）</InvoiceType>
+    <SpecificInvoiceMark>02</SpecificInvoiceMark>
+    <IssuTime>2026-01-15 10:23:45</IssuTime>
+    <SellerId>91530128059467473X</SellerId>
+    <SellerName>禄劝云睿网络科技开发有限公司</SellerName>
+    <BuyerId>91110108MA01ABCD12</BuyerId>
+    <BuyerName>云图科技有限公司</BuyerName>
+  </Header>
+  <EInvoiceData>
+    <BasicInformation>
+      <TotalAmWithoutTax>20396.04</TotalAmWithoutTax>
+      <TotalTaxAm>203.96</TotalTaxAm>
+      <TotalTax-includedAmount>20600.00</TotalTax-includedAmount>
+      <TotalTax-includedAmountUpper>贰万零陆佰元整</TotalTax-includedAmountUpper>
+    </BasicInformation>
+    <IssuItemInformation>
+      <ItemName>技术服务费</ItemName>
+      <SpecMod/>
+      <MeaUnits/>
+      <Quantity/>
+      <UnPrice/>
+      <Amount>20396.04</Amount>
+      <TaxRate>0.01</TaxRate>
+      <TaxAm>203.96</TaxAm>
+    </IssuItemInformation>
+  </EInvoiceData>
+</EInvoice>

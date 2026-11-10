@@ -62,6 +62,18 @@ CONTRACT_TYPES: tuple[str, ...] = (
 
 FILING_STATUSES: tuple[str, ...] = ("草稿", "已确认", "已申报")
 
+#: 发票方向（销项 = 开给客户；进项 = 供应商开给本企业）
+INVOICE_DIRECTIONS: tuple[str, ...] = ("销项", "进项")
+
+#: 发票类型（数电票/电子发票统一归入 普票/专票/其他）
+INVOICE_KINDS: tuple[str, ...] = ("数电票", "专票", "普票", "其他")
+
+#: 票据 / 流水池状态
+INGEST_STATUSES: tuple[str, ...] = ("待匹配", "已匹配", "已入账", "已忽略")
+
+#: 匹配建议状态
+MATCH_STATUSES: tuple[str, ...] = ("建议", "已确认", "已忽略")
+
 DIRECTIONS: tuple[str, ...] = ("借", "贷")
 
 # 小规模纳税人征收率（3% 减按 1%）
@@ -316,6 +328,74 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("is_rd_related", "bool", "研发相关"),
             _col("note", "str", "备注"),
             _col("created_at", "str", "创建时间"),
+        ],
+    },
+    # 发票池（数电票 / 专票 / 普票，销项与进项）
+    "invoices": {
+        "file": "invoice_pool.csv",
+        "prefix": "INV",
+        "label": "发票池",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("invoice_no", "str", "发票号码"),
+            _col("invoice_code", "str", "发票代码"),
+            _col("invoice_date", "date", "开票日期"),
+            _col("invoice_type", "str", "发票类型"),
+            _col("direction", "str", "方向"),
+            _col("seller", "str", "销售方"),
+            _col("buyer", "str", "购买方"),
+            _col("amount_exclusive", "money", "不含税金额"),
+            _col("tax_amount", "money", "税额"),
+            _col("total_inclusive", "money", "价税合计"),
+            _col("status", "str", "状态"),
+            _col("source_file", "str", "来源文件"),
+            _col("source_format", "str", "来源格式"),
+            _col("raw_json", "json", "原始数据"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+        ],
+    },
+    # 银行流水池（收入 / 支出）
+    "bank_transactions": {
+        "file": "bank_transactions.csv",
+        "prefix": "BTX",
+        "label": "银行流水池",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("transaction_date", "date", "交易日期"),
+            _col("direction", "str", "收支方向"),
+            _col("amount", "money", "金额"),
+            _col("counterparty", "str", "对方户名"),
+            _col("account_no", "str", "账号"),
+            _col("summary", "str", "摘要"),
+            _col("transaction_no", "str", "交易流水号"),
+            _col("balance", "money", "余额"),
+            _col("status", "str", "状态"),
+            _col("source_file", "str", "来源文件"),
+            _col("source_format", "str", "来源格式"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+        ],
+    },
+    # 发票 ↔ 流水 匹配建议
+    "matches": {
+        "file": "match_suggestions.csv",
+        "prefix": "MAT",
+        "label": "匹配建议",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("invoice_id", "str", "发票编号"),
+            _col("invoice_no", "str", "发票号码"),
+            _col("transaction_id", "str", "流水编号"),
+            _col("transaction_no", "str", "交易流水号"),
+            _col("score", "int", "匹配分"),
+            _col("match_type", "str", "匹配类型"),
+            _col("status", "str", "状态"),
+            _col("amount_diff", "money", "金额差异"),
+            _col("date_diff", "int", "日期差异(天)"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+            _col("confirmed_at", "str", "确认时间"),
         ],
     },
     # 申报记录（填报进度）

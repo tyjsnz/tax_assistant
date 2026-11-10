@@ -42,16 +42,18 @@ _LOG_LABELS = {
     "filing_log": "申报填报记录",
 }
 
-_locks: dict[str, threading.Lock] = {}
+#: 每张表一把**可重入锁**：``append()`` 内部会调用 ``read()``，而 ``read()`` 在
+#: 文件缺失时会经 ``ensure()`` 再次取同一把锁；若用普通 Lock 会自锁死（RLock 可避免）。
+_locks: dict[str, threading.RLock] = {}
 _locks_guard = threading.Lock()
 _tables: dict[str, "CSVTable"] = {}
 
 
-def _lock_for(path: Path) -> threading.Lock:
+def _lock_for(path: Path) -> threading.RLock:
     key = str(path)
     with _locks_guard:
         if key not in _locks:
-            _locks[key] = threading.Lock()
+            _locks[key] = threading.RLock()
         return _locks[key]
 
 
@@ -128,7 +130,7 @@ class CSVTable:
         return Path(config.DATA_DIR) / self.file_name
 
     @property
-    def lock(self) -> threading.Lock:
+    def lock(self) -> threading.RLock:
         return _lock_for(self.path)
 
     def _find_date_column(self) -> str | None:
