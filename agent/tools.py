@@ -31,6 +31,7 @@ TOOL_NAMES: list[str] = [
     "calc_cit_settlement",
     "calc_rd_deduction",
     "calc_stamp_tax",
+    "calc_disability_fund",
     "calc_iit",
     "add_income",
     "add_expense",
@@ -570,6 +571,53 @@ def _tool_calc_stamp_tax(args: dict[str, Any]) -> dict[str, Any]:
             f"金额 ¥{yuan(item.get('amount'))} × {item.get('rate_text')} → ¥{yuan(item.get('tax_payable'))}"
         )
     lines.append("- 政策依据：《中华人民共和国印花税法》；财政部 税务总局公告2023年第12号")
+    lines.append(DISCLAIMER)
+    return _ok(result, "\n".join(lines))
+
+
+def _tool_calc_disability_fund(args: dict[str, Any]) -> dict[str, Any]:
+    """残疾人就业保障金测算工具实现。"""
+    employees_raw = args.get("employees")
+    if employees_raw in (None, ""):
+        raise ValueError("缺少必填参数 employees（上年在职职工人数），请提供人数，例如 employees=31。")
+    try:
+        employees = int(float(str(employees_raw).replace(",", "")))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"employees「{employees_raw}」不是有效整数，请提供上年在职职工人数。") from exc
+    average_wage = _opt_float(args, "average_wage", 0.0)
+    disabled = _opt_float(args, "disabled_employed", 0.0)
+    local_wage = _opt_float(args, "local_average_wage", 0.0)
+    result = _disclaimer(
+        engine.calc_disability_fund(
+            employees=employees,
+            average_wage=average_wage,
+            disabled_employed=disabled,
+            local_average_wage=local_wage or None,
+        )
+    )
+    _safe_calc_log(
+        "disability_fund",
+        str(args.get("period") or engine.current_month()[:4]),
+        {"employees": employees, "average_wage": average_wage, "disabled": disabled},
+        result,
+    )
+    lines = [
+        f"【残疾人就业保障金测算 · {result.get('year') if result.get('year') else ''}】".replace(" · 】", "】"),
+        f"- 上年在职职工人数：{result.get('employees')} 人；实际安排残疾人：{round(float(result.get('disabled_employed') or 0), 2):g} 人；"
+        f"安排比例：{round(float(result.get('actual_ratio') or 0) * 100, 2):.2f}%（法定 1.5%）",
+        f"- 差额人数：{round(float(result.get('shortfall') or 0), 3):g} 人；年平均工资：¥{yuan(result.get('average_wage'))}",
+        f"- 应缴基数：¥{yuan(result.get('base_amount'))}；分档减缴比例：{round(float(result.get('discount_rate') or 0) * 100):.0f}%",
+        f"- **本期应缴残保金：¥{yuan(result.get('payable'))}**",
+    ]
+    if result.get("exempt"):
+        lines.append("- 说明：在职职工 30 人（含）以下，按现行政策免征。")
+    lines.append(f"- 说明：{result.get('note', '')}")
+    for warning in result.get("warnings") or []:
+        lines.append(f"⚠️ {warning}")
+    lines.append("- 政策依据：")
+    for source in result.get("policy_sources") or []:
+        lines.append(f"  · {source.get('title')}（{source.get('source')}，{source.get('effective_date')} 起）")
+    lines.append("- 提示：申报期限与残联审核流程以当地残联/税务公告为准。")
     lines.append(DISCLAIMER)
     return _ok(result, "\n".join(lines))
 
@@ -1259,6 +1307,23 @@ _TOOL_DEFS: list[dict[str, Any]] = [
         "parameters": _schema({"period": _PERIOD}),
     },
     {
+        "name": "calc_disability_fund",
+        "description": (
+            "测算残疾人就业保障金（残保金）：按 1.5% 法定比例、分档减缴（1%~1.5% 按 50%、低于 1% 按 90%）、"
+            "30 人以下免征、年平均工资 2 倍封顶提示。"
+        ),
+        "parameters": _schema(
+            {
+                "employees": {"type": "integer", "description": "上年在职职工人数"},
+                "average_wage": {**_MONEY, "description": "上年在职职工年平均工资（元）"},
+                "disabled_employed": {**_MONEY, "description": "上年实际安排残疾人就业人数（可为小数，缺省 0）"},
+                "local_average_wage": {**_MONEY, "description": "当地社会平均工资（元，可选，用于 2 倍封顶核对）"},
+                "period": {"type": "string", "description": "所属年度，如 2026（缺省当前年度）"},
+            },
+            ["employees"],
+        ),
+    },
+    {
         "name": "calc_iit",
         "description": (
             "计算工资薪金个人所得税本期应预扣预缴税额（居民个人累计预扣法）："
@@ -1403,6 +1468,7 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "calc_rd_deduction": _tool_calc_rd_deduction,
     "calc_stamp_tax": _tool_calc_stamp_tax,
     "calc_iit": _tool_calc_iit,
+    "calc_disability_fund": _tool_calc_disability_fund,
     "add_income": _tool_add_income,
     "add_expense": _tool_add_expense,
     "query_ledger": _tool_query_ledger,

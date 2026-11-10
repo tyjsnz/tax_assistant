@@ -990,4 +990,148 @@ def render() -> None:
     _render_archive_panel(period)
     _render_progress(period, bundles)
     _render_guides_summary(bundles)
+    _render_annual_other_panel()
     theme.disclaimer()
+
+
+def _render_annual_other_panel() -> None:
+    """年度辅助申报：工商年报数据准备、残保金测算（P1-D，可选辅助）。"""
+    try:
+        from filing import annual_report, disability_fund
+    except Exception as exc:  # noqa: BLE001 - 模块缺失时不影响主申报流程
+        st.warning(f"工商年报/残保金模块不可用：{exc}")
+        return
+
+    with st.expander("📄 工商年报 / 残保金（年度辅助，不代替申报）", expanded=False):
+        st.caption(
+            "工商年报：每年 1 月 1 日—6 月 30 日在国家企业信用信息公示系统报送；"
+            "残保金：按年向残联/税务申报，具体期限以当地公告为准。系统只做数据准备与测算。"
+        )
+        now_year = datetime.now().year
+        year = st.selectbox(
+            "报告年度",
+            [str(now_year), str(now_year - 1)],
+            index=0,
+            key="annual_other_year",
+            format_func=lambda value: f"{value} 年度",
+        )
+        col_report, col_fund = st.columns(2)
+
+        with col_report:
+            ui.section("工商年报数据准备", "企业基本信息 + 资产状况估算 + 校验/操作步骤")
+            if st.button("📄 生成工商年报数据准备表", key="annual_report_build", width="stretch"):
+                try:
+                    st.session_state["annual_report_bundle"] = annual_report.build_annual_report(year)
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"生成失败：{exc}")
+            bundle = st.session_state.get("annual_report_bundle")
+            if bundle:
+                totals = bundle.get("totals") or {}
+                ui.metric_row(
+                    [
+                        {"label": "资产总额（估）", "value": F.fmt_money(totals.get("assets"))},
+                        {"label": "营业总收入", "value": F.fmt_money(totals.get("revenue"))},
+                        {"label": "从业人数", "value": f"{int(totals.get('employees') or 0)} 人"},
+                    ],
+                    columns=3,
+                )
+                for section in bundle.get("sections") or []:
+                    with st.expander(section.get("title"), expanded=False):
+                        st.dataframe(
+                            pd.DataFrame(
+                                [
+                                    {
+                                        "行次": line.get("line_no"),
+                                        "项目": line.get("name"),
+                                        "金额/内容": line.get("value_text"),
+                                        "来源/口径": line.get("source") or line.get("rule"),
+                                    }
+                                    for line in section.get("lines") or []
+                                ]
+                            ),
+                            width="stretch",
+                            hide_index=True,
+                        )
+                for item in bundle.get("checks") or []:
+                    getattr(ui, "status_alert", st.info)(item.get("status"), f"{item.get('field')}：{item.get('message')}")
+                with st.expander("报送操作步骤", expanded=False):
+                    for index, step in enumerate(bundle.get("guide") or [], start=1):
+                        st.markdown(f"{index}. {step}")
+                try:
+                    path = annual_report.export_annual_report_excel(bundle)
+                    st.download_button(
+                        "📊 导出工商年报数据准备 Excel",
+                        data=Path(path).read_bytes(),
+                        file_name=Path(path).name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="annual_report_download",
+                        width="stretch",
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    st.warning(f"导出失败：{exc}")
+
+        with col_fund:
+            ui.section("残疾人就业保障金", "1.5% 比例 + 分档减缴（50%/90%）+ 30 人以下免征")
+            fund_employees = st.number_input("上年在职职工人数", min_value=0, value=30, step=1, key="fund_employees")
+            fund_wage = st.number_input("上年在职职工年平均工资（元）", min_value=0.0, value=80_000.0, step=1_000.0, key="fund_wage")
+            fund_disabled = st.number_input("实际安排残疾人就业人数", min_value=0.0, value=0.0, step=0.5, key="fund_disabled")
+            fund_local = st.number_input(
+                "当地社会平均工资（元，可选，用于 2 倍封顶核对）", min_value=0.0, value=0.0, step=1_000.0, key="fund_local"
+            )
+            if st.button("🧮 测算残保金", key="fund_build", width="stretch"):
+                try:
+                    st.session_state["disability_fund_bundle"] = disability_fund.build_disability_fund(
+                        year,
+                        employees=int(fund_employees),
+                        average_wage=float(fund_wage),
+                        disabled_employed=float(fund_disabled),
+                        local_average_wage=float(fund_local) or None,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"测算失败：{exc}")
+            fund_bundle = st.session_state.get("disability_fund_bundle")
+            if fund_bundle:
+                totals = fund_bundle.get("totals") or {}
+                ui.metric_row(
+                    [
+                        {"label": "本期应缴", "value": F.fmt_money(totals.get("payable"))},
+                        {"label": "应缴基数", "value": F.fmt_money(totals.get("base_amount"))},
+                        {"label": "减缴比例", "value": f"{float(totals.get('discount_rate') or 0) * 100:.0f}%"},
+                    ],
+                    columns=3,
+                )
+                st.success((fund_bundle.get("summary") or {}).get("text") or "残保金测算完成")
+                for section in fund_bundle.get("sections") or []:
+                    with st.expander(section.get("title"), expanded=False):
+                        st.dataframe(
+                            pd.DataFrame(
+                                [
+                                    {
+                                        "行次": line.get("line_no"),
+                                        "项目": line.get("name"),
+                                        "金额/内容": line.get("value_text"),
+                                        "口径/依据": line.get("rule") or line.get("source"),
+                                    }
+                                    for line in section.get("lines") or []
+                                ]
+                            ),
+                            width="stretch",
+                            hide_index=True,
+                        )
+                for item in fund_bundle.get("checks") or []:
+                    st.caption(f"{item.get('status')} · {item.get('field')}：{item.get('message')}")
+                with st.expander("申报操作步骤", expanded=False):
+                    for index, step in enumerate(fund_bundle.get("guide") or [], start=1):
+                        st.markdown(f"{index}. {step}")
+                try:
+                    path = disability_fund.export_disability_fund_excel(fund_bundle)
+                    st.download_button(
+                        "📊 导出残保金测算 Excel",
+                        data=Path(path).read_bytes(),
+                        file_name=Path(path).name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="fund_download",
+                        width="stretch",
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    st.warning(f"导出失败：{exc}")

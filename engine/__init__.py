@@ -15,6 +15,13 @@ from engine.cit_settlement import (
     get_settlement_sources,
 )
 from engine.corporate_tax import calc_cit_prepay, calc_corp_tax
+from engine.disability_fund import (
+    DISABILITY_SOURCES,
+    EXEMPTION_EMPLOYEE_THRESHOLD,
+    REQUIRED_DISABILITY_RATIO,
+    calc_disability_fund,
+    get_disability_sources,
+)
 from engine.iit import (
     BASIC_DEDUCTION_PER_MONTH,
     IIT_RATE_TABLE,
@@ -85,6 +92,11 @@ __all__ = [
     "calc_vat",
     "calc_corp_tax",
     "calc_cit_prepay",
+    "calc_disability_fund",
+    "get_disability_sources",
+    "DISABILITY_SOURCES",
+    "REQUIRED_DISABILITY_RATIO",
+    "EXEMPTION_EMPLOYEE_THRESHOLD",
     "calc_adjustment_limits",
     "calc_loss_carryforward",
     "calc_settlement",

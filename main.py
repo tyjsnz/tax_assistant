@@ -9,6 +9,8 @@ Web 界面是主要使用方式（``.venv/bin/streamlit run ui/streamlit_app.py`
     python main.py demo
     python main.py ingest --invoices examples/invoices/*.xml --bank examples/bank/*.csv --confirm-score 90
     python main.py pool
+    python main.py annual-report --year 2026
+    python main.py disability-fund --year 2026 --employees 31 --avg-wage 80000
     python main.py settlement --year 2026 --save-inputs entertainment_actual=10000 employees=5
     python main.py cit-annual --year 2026
     python main.py employees
@@ -145,6 +147,51 @@ def _month_label(period: str) -> str:
         return period_label(period)
     except Exception:  # noqa: BLE001
         return period
+
+
+def cmd_annual_report(args: argparse.Namespace) -> int:
+    """生成工商年报数据准备表并导出 Excel。"""
+    from filing import annual_report
+
+    bundle = annual_report.build_annual_report(args.year)
+    path = annual_report.export_annual_report_excel(bundle, args.out or None)
+    totals = bundle.get("totals") or {}
+    print(f"\n📄 {args.year} 年度工商年报数据准备表")
+    print(f"  营业总收入 ¥{float(totals.get('revenue') or 0):,.2f} · 资产总额（估）¥{float(totals.get('assets') or 0):,.2f} · "
+          f"从业人数 {int(totals.get('employees') or 0)} 人")
+    for item in bundle.get("checks") or []:
+        print(f"  {item.get('status')}: {item.get('field')} — {item.get('message')}")
+    print(f"\n📦 已导出：{path}")
+    print("  ⚠️ 实际填报请在国家企业信用信息公示系统（gsxt.gov.cn）完成，每年 6 月 30 日前报送。")
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def cmd_disability_fund(args: argparse.Namespace) -> int:
+    """测算残疾人就业保障金并导出 Excel。"""
+    from filing import disability_fund
+
+    bundle = disability_fund.build_disability_fund(
+        args.year,
+        employees=args.employees,
+        average_wage=args.avg_wage,
+        disabled_employed=args.disabled,
+        local_average_wage=args.local_avg_wage or None,
+    )
+    totals = bundle.get("totals") or {}
+    path = disability_fund.export_disability_fund_excel(bundle, args.out or None)
+    print(f"\n🧮 {args.year} 年度残疾人就业保障金测算")
+    print(f"  在职人数 {int(totals.get('employees') or 0)} 人 · 安排残疾人 {float(totals.get('disabled_employed') or 0):g} 人 · "
+          f"比例 {float(totals.get('actual_ratio') or 0) * 100:.2f}%")
+    print(f"  应缴基数 ¥{float(totals.get('base_amount') or 0):,.2f} · 减缴比例 {float(totals.get('discount_rate') or 0) * 100:.0f}% · "
+          f"本期应缴 ¥{float(totals.get('payable') or 0):,.2f}")
+    print(f"  {(bundle.get('summary') or {}).get('text')}")
+    for item in bundle.get("checks") or []:
+        print(f"  {item.get('status')}: {item.get('field')} — {item.get('message')}")
+    print(f"\n📦 已导出：{path}")
+    print("  ⚠️ 实际申报请按当地残联/税务公告完成。")
+    print(f"  {config.DISCLAIMER}")
+    return 0
 
 
 def cmd_settlement(args: argparse.Namespace) -> int:
@@ -856,6 +903,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_regions = sub.add_parser("regions", help="列出地区预设（城建税税率）")
     p_regions.set_defaults(func=cmd_regions)
+
+    p_annual_report = sub.add_parser("annual-report", help="生成工商年报数据准备表（Excel）")
+    p_annual_report.add_argument("--year", required=True, help="报告年度，如 2026")
+    p_annual_report.add_argument("--out", default=None)
+    p_annual_report.set_defaults(func=cmd_annual_report)
+
+    p_disability = sub.add_parser("disability-fund", help="测算残疾人就业保障金（Excel）")
+    p_disability.add_argument("--year", required=True, help="所属年度，如 2026")
+    p_disability.add_argument("--employees", type=int, default=None, help="上年在职职工人数（默认取员工档案）")
+    p_disability.add_argument("--avg-wage", type=float, default=None, help="上年在职职工年平均工资（默认按工资费用/人数）")
+    p_disability.add_argument("--disabled", type=float, default=0.0, help="实际安排残疾人就业人数")
+    p_disability.add_argument("--local-avg-wage", type=float, default=0.0, help="当地社会平均工资（用于 2 倍封顶核对）")
+    p_disability.add_argument("--out", default=None)
+    p_disability.set_defaults(func=cmd_disability_fund)
 
     p_settlement = sub.add_parser("settlement", help="企业所得税汇算辅助（数据/输入/测算/检查清单）")
     p_settlement.add_argument("--year", required=True, help="年度，如 2026")

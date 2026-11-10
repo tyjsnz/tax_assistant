@@ -151,11 +151,11 @@ def _tax_period_for(item_key: str, due: date) -> str:
     """根据申报事项与截止日推算「税款所属期」。"""
     if item_key in ("vat_quarterly", "corp_tax_quarterly", "financial_report_quarterly", "stamp_tax_quarterly"):
         return prev_quarter(quarter_of(due))
-    if item_key == "personal_tax_monthly":
+    if item_key in ("personal_tax_monthly", "social_insurance_monthly"):
         first = date(due.year, due.month, 1)
         prev_month = first - timedelta(days=1)
         return f"{prev_month.year}-{prev_month.month:02d}"
-    if item_key in ("annual_settlement", "annual_report"):
+    if item_key in ("annual_settlement", "annual_report", "disability_fund_annual"):
         return f"{due.year - 1}"
     return ""
 
@@ -177,6 +177,9 @@ def filing_deadlines(year: int) -> list[dict[str, Any]]:
             due = shift_to_workday(nominal)
             tax_period = _tax_period_for(key, nominal)
             months_cn = "、".join(f"{m}月" for m in spec["months"][:4]) if key.endswith("quarterly") else f"{month}月"
+            description = f"{spec['name']}（税款所属期：{period_label(tax_period) if tax_period else '—'}）"
+            if spec.get("note"):
+                description += f"；{spec['note']}"
             items.append(
                 {
                     "key": key,
@@ -188,7 +191,8 @@ def filing_deadlines(year: int) -> list[dict[str, Any]]:
                     "tax_period_label": period_label(tax_period) if tax_period else "",
                     "remind_days": spec.get("remind_days", [3]),
                     "months_cn": months_cn,
-                    "description": f"{spec['name']}（税款所属期：{period_label(tax_period) if tax_period else '—'}）",
+                    "note": spec.get("note", ""),
+                    "description": description,
                     "disclaimer": DISCLAIMER,
                 }
             )

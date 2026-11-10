@@ -49,7 +49,7 @@ ENV_FILE = BASE_DIR / ".env"
 
 APP_NAME = "税小智 · 小规模纳税人自主税务填报系统"
 APP_SHORT_NAME = "税小智"
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.0"
 
 DISCLAIMER = "⚠️ 仅供参考，以主管税务机关核定为准"
 
@@ -238,6 +238,24 @@ FILING_CALENDAR: dict[str, Any] = {
         "tax_period": "上一纳税年度",
         "remind_days": [30],
         "category": "工商年报",
+    },
+    "social_insurance_monthly": {
+        "name": "社会保险费申报缴纳（单位部分）",
+        "months": list(range(1, 13)),
+        "day": 25,
+        "tax_period": "上一月",
+        "remind_days": [5, 2],
+        "category": "社保费",
+        "note": "各地截止日不同（常见每月 15 日 / 25 日），以当地税务/社保公告为准",
+    },
+    "disability_fund_annual": {
+        "name": "残疾人就业保障金申报",
+        "months": [9],
+        "day": 30,
+        "tax_period": "上一纳税年度",
+        "remind_days": [30, 15, 3],
+        "category": "残保金",
+        "note": "多数地区按年申报（6–9 月），以当地残联/税务公告为准",
     },
 }
 

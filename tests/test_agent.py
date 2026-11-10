@@ -470,14 +470,15 @@ def test_detect_intent_llm_failure_falls_back(monkeypatch):
 def test_tool_specs_and_names():
     specs = tool_specs()
     assert [spec["function"]["name"] for spec in specs] == TOOL_NAMES
-    assert len(TOOL_NAMES) == 15
+    assert len(TOOL_NAMES) == 16
     assert "calc_iit" in TOOL_NAMES
     assert "calc_cit_settlement" in TOOL_NAMES
+    assert "calc_disability_fund" in TOOL_NAMES
     for spec in specs:
         assert spec["type"] == "function"
         assert spec["function"]["description"]
         assert spec["function"]["parameters"]["type"] == "object"
-    assert len(describe_tools()) == 15
+    assert len(describe_tools()) == 16
 
 
 def test_call_tool_unknown_and_missing_params():
@@ -999,3 +1000,18 @@ def test_export_filing_tool_with_filing():
     from pathlib import Path
 
     assert Path(result["data"]["path"]).exists()
+
+
+def test_call_calc_disability_fund_tool():
+    result = call_tool("calc_disability_fund", {"employees": 31, "average_wage": 80_000})
+    assert result["ok"] is True
+    assert result["data"]["payable"] == 33_480.0
+    assert "残保金" in result["display"]
+    assert "财政部公告2023年第8号" in "\n".join(
+        source.get("source", "") for source in result["data"].get("policy_sources") or []
+    )
+    assert result["data"]["disclaimer"]
+    # 30 人以下免征
+    exempt = call_tool("calc_disability_fund", {"employees": 30, "average_wage": 80_000})
+    assert exempt["ok"] is True
+    assert exempt["data"]["payable"] == 0

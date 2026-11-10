@@ -1,3 +1,0 @@
-﻿id,year,item_type,direction,accounting_amount,tax_amount,adjustment_amount,basis,source,note,created_at
-ADJ000001,2026,税收罚款,调增,0.00,0.00,5000.00,税收罚款不得税前扣除,企业所得税法第十条,,2026-11-10 13:58:49
-ADJ000002,2026,国债利息收入,调减,0.00,0.00,3000.00,国债利息收入免税,企业所得税法第二十六条,,2026-11-10 13:58:49
