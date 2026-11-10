@@ -17,7 +17,7 @@ from typing import Any, Iterable
 import config
 from engine.money import round2
 from engine.tax_calendar import period_range
-from ledger import models
+from ledger import locks, models
 from ledger.audit import log_user_action
 from ledger.store import table
 
@@ -132,6 +132,7 @@ def add_expense(
             "note": note,
         }
     )
+    locks.ensure_open(record["date"], action="新增费用")
     added = table(TABLE_NAME).append(record)
     log_user_action(
         "新增费用",
@@ -162,12 +163,14 @@ def update_expense(expense_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     current = get_expense(expense_id)
     if current is None:
         raise KeyError(f"{TABLE_LABEL}中不存在编号 {expense_id}")
+    locks.ensure_open(current["date"], action="修改费用")
     merged = dict(current)
     for key, value in patch.items():
         if key in ("id", "created_at"):
             continue
         merged[key] = value
     record = models.normalize_expense(merged)
+    locks.ensure_open(record["date"], action="修改费用")
     updated = table(TABLE_NAME).update(expense_id, record)
     log_user_action(
         "修改费用",
@@ -177,7 +180,11 @@ def update_expense(expense_id: str, patch: dict[str, Any]) -> dict[str, Any]:
 
 
 def delete_expense(expense_id: str) -> bool:
-    """按编号删除费用记录，返回是否删除成功。"""
+    """按编号删除费用记录，返回是否删除成功；已结账期间禁止删除。"""
+    current = get_expense(expense_id)
+    if current is None:
+        return False
+    locks.ensure_open(current["date"], action="删除费用")
     deleted = table(TABLE_NAME).delete(expense_id)
     if deleted:
         log_user_action("删除费用", f"删除编号 {expense_id}")
@@ -204,6 +211,8 @@ def import_expense_csv(path: Any) -> int:
             records.append(models.normalize_expense(payload))
         except ValueError:
             continue
+    for record in records:
+        locks.ensure_open(record["date"], action="导入费用")
     added = table(TABLE_NAME).append_many(records)
     log_user_action("导入费用CSV", f"文件 {csv_path.name}，成功导入 {len(added)} 条")
     return len(added)

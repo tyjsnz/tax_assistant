@@ -17,3 +17,6 @@ ocr/bin/
 
 # Swift 编译缓存
 .cache/
+
+# 归档快照与备份文件（大文件/生成物，不入库；保留 archives.csv 索引）
+data/archive/

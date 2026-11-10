@@ -14,3 +14,6 @@ pytest>=8.0
 
 # 发票 PDF 文本解析（可选，缺失时降级为手动/XML）
 pypdf>=4.0
+
+# 归档 PDF 生成（申报表归档 PDF）
+reportlab>=4.0

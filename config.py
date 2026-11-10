@@ -34,7 +34,7 @@ ENV_FILE = BASE_DIR / ".env"
 
 APP_NAME = "税小智 · 小规模纳税人自主税务填报系统"
 APP_SHORT_NAME = "税小智"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 DISCLAIMER = "⚠️ 仅供参考，以主管税务机关核定为准"
 

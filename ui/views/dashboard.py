@@ -9,7 +9,7 @@ import streamlit as st
 
 from engine import current_quarter, deadline_status, format_date_cn, next_deadline, reminders
 from ledger.models import mask_client
-from ui.components import cache, charts, formatting as F, ledger_api, nav, theme, ui
+from ui.components import archive_api as AA, cache, charts, formatting as F, ledger_api, nav, theme, ui
 
 
 def _load_dashboard() -> dict:
@@ -190,6 +190,231 @@ def _render_quick_entries() -> None:
                 nav.goto(page)
 
 
+# =============================================================================
+# 期间结账卡片（P0-3）
+# =============================================================================
+CLOSE_DIALOG_KEY = "_dash_close_dialog_period"
+REOPEN_OPEN_KEY = "_dash_reopen_confirm_open"
+
+PERIOD_STATUS_ICONS = {
+    "未结账": "⬜",
+    "已结账": "🔒",
+    "已申报": "📤",
+    "已归档": "🗄️",
+}
+
+
+def _period_status_icon(status: str) -> str:
+    return PERIOD_STATUS_ICONS.get(str(status or "").strip(), "ℹ️")
+
+
+def _recent_month_options(current: str, count: int = 6) -> list[str]:
+    """最近若干月份（新的在前），用于结账期间选择。"""
+    options = [current] if current else []
+    cursor = current
+    for _ in range(max(count - 1, 0)):
+        cursor = AA.prev_month(cursor)
+        if not cursor:
+            break
+        options.append(cursor)
+    return options
+
+
+@st.dialog("期间结账检查")
+def _close_period_dialog(period: str) -> None:
+    """结账确认弹窗：展示预结账检查清单，ERROR 时禁用确认。"""
+    st.caption(f"结账期间：{AA.month_label(period)}（{period}）")
+    if not (AA.closing_checks_ready() and AA.closing_ready()):
+        ui.module_missing("期间结账", "closing.checks / closing.close", detail=AA.missing_detail())
+        return
+    try:
+        checks = AA.pre_close_checks(period)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"预结账检查失败：{exc}")
+        return
+    level = str(checks.get("level") or "WARNING")
+    details = []
+    for item in checks.get("checks") or []:
+        message = str(item.get("message") or "")
+        hint = str(item.get("fix_hint") or "")
+        details.append(
+            {
+                "status": item.get("status"),
+                "field": item.get("name") or item.get("key") or "检查项",
+                "expected": "",
+                "actual": "",
+                "message": f"{message}；建议：{hint}" if hint and hint not in message else message,
+            }
+        )
+    if details:
+        ui.status_table(details)
+    if level == "ERROR":
+        st.error("存在 ERROR 级问题，请先按提示修复后再结账（ERROR 不可强制结账）。")
+    elif level == "WARNING":
+        st.warning("存在 WARNING 级提示，建议人工确认后继续结账。")
+    else:
+        st.success("检查通过，可以结账。")
+    if checks.get("disclaimer"):
+        theme.disclaimer(checks.get("disclaimer"))
+    note = st.text_input("结账备注（可选）", key=f"dash_close_note_{period}", placeholder="如：2026-10 月结")
+    if st.button(
+        "确认结账",
+        key=f"dash_close_confirm_{period}",
+        type="primary",
+        width="stretch",
+        disabled=level == "ERROR",
+    ):
+        try:
+            result = AA.close_period(period, note=note)
+        except Exception as exc:  # noqa: BLE001
+            st.error(str(exc))
+        else:
+            cache.clear()
+            entries = result.get("entries") or []
+            message = f"{AA.month_label(period)} 已结账。"
+            if entries:
+                message += f"生成 {len(entries)} 张损益结转凭证。"
+            ui.flash(message)
+            st.session_state.pop(CLOSE_DIALOG_KEY, None)
+            st.rerun()
+    if st.button("取消", key=f"dash_close_cancel_{period}", width="stretch"):
+        st.session_state.pop(CLOSE_DIALOG_KEY, None)
+        st.rerun()
+
+
+def _render_closing_card() -> None:
+    """期间结账卡片：当前/上月状态、锁概览、待结账提醒、结账与反结账入口。"""
+    ui.section(
+        "🔒 期间结账",
+        "结账后该期间台账与凭证被锁定，保证已出报表、申报表与归档包与账面一致；"
+        "如需调整请先反结账（仅最近一个已结账期间可反结）。",
+    )
+    lock = AA.lock_summary()
+    current = str(lock.get("current_month") or AA.current_month())
+    previous = AA.prev_month(current)
+    latest = str(lock.get("latest_closed_month") or "")
+    current_status = AA.period_status(current)
+    previous_status = AA.period_status(previous) if previous else "未结账"
+
+    with st.container(border=True):
+        cols = st.columns(4)
+        with cols[0]:
+            st.metric(
+                f"当前月（{AA.month_label(current)}）",
+                f"{_period_status_icon(current_status)} {current_status}",
+                border=False,
+                width="stretch",
+            )
+        with cols[1]:
+            st.metric(
+                f"上月（{AA.month_label(previous) if previous else '—'}）",
+                f"{_period_status_icon(previous_status)} {previous_status}",
+                border=False,
+                width="stretch",
+            )
+        with cols[2]:
+            st.metric(
+                "最近已结账月份",
+                AA.month_label(latest) + f"（{latest}）" if latest else "—",
+                border=False,
+                width="stretch",
+            )
+        with cols[3]:
+            st.metric(
+                "当前月记账状态",
+                "🔒 已锁定" if lock.get("current_locked") else "✅ 可记账",
+                border=False,
+                width="stretch",
+            )
+        if lock.get("disclaimer"):
+            st.caption(str(lock.get("disclaimer")))
+        locked_rows = lock.get("locked_periods") or []
+        if locked_rows:
+            st.caption(
+                "已锁定期间："
+                + "、".join(f"{row.get('period')}（{row.get('status')}）" for row in locked_rows[:8])
+            )
+        if previous and previous_status == "未结账":
+            st.info(
+                f"📌 待结账提醒：{AA.month_label(previous)} 尚未结账。"
+                "完成当月记账后建议及时结账，以锁定报表口径并避免跨期改动。",
+                icon="📌",
+            )
+        elif latest:
+            st.success(f"最近已结账期间：{AA.month_label(latest)}（{latest}），该期间已锁定。", icon="🔒")
+
+    close_missing = not (AA.closing_checks_ready() and AA.closing_ready())
+    options = _recent_month_options(current)
+    control_cols = st.columns([2, 2, 2, 4])
+    with control_cols[0]:
+        target = st.selectbox(
+            "结账期间",
+            options,
+            index=1 if len(options) > 1 else 0,
+            format_func=AA.month_label,
+            key="dash_close_target",
+        )
+    with control_cols[1]:
+        st.write("")
+        if st.button(
+            "🔒 立即结账",
+            key="dash_close_period",
+            type="primary",
+            width="stretch",
+            disabled=close_missing,
+            help="展示预结账检查清单，确认后生成损益结转凭证并锁定期间",
+        ):
+            st.session_state[CLOSE_DIALOG_KEY] = target
+            st.rerun()
+    with control_cols[2]:
+        st.write("")
+        if st.button(
+            "🔓 反结账",
+            key="dash_reopen_period",
+            width="stretch",
+            disabled=(not AA.closing_ready()) or not latest,
+            help="仅最近一个已结账期间可反结账；会删除该期间的损益结转凭证",
+        ):
+            st.session_state[REOPEN_OPEN_KEY] = latest
+            st.rerun()
+    with control_cols[3]:
+        st.caption("结账前会展示 pre_close_checks 检查清单；ERROR 项会阻止结账。反结账需二次确认。")
+    if close_missing:
+        ui.module_missing("期间结账", "closing.checks / closing.close", detail=AA.missing_detail())
+
+    reopen_target = st.session_state.get(REOPEN_OPEN_KEY)
+    if reopen_target:
+        with st.container(border=True):
+            st.warning(
+                f"反结账将删除 {AA.month_label(reopen_target)}（{reopen_target}）的损益结转凭证"
+                "并解锁该期间，是否继续？",
+                icon="⚠️",
+            )
+            reason = st.text_input("反结账原因（可选）", key="dash_reopen_reason")
+            confirm_cols = st.columns(2)
+            with confirm_cols[0]:
+                if st.button("确认反结账", key="dash_reopen_confirm", type="primary", width="stretch"):
+                    try:
+                        AA.reopen_period(reopen_target, reason=reason)
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(str(exc))
+                    else:
+                        cache.clear()
+                        st.session_state.pop(REOPEN_OPEN_KEY, None)
+                        ui.flash(f"{AA.month_label(reopen_target)} 已反结账，期间已解锁。")
+                        st.rerun()
+            with confirm_cols[1]:
+                if st.button("取消", key="dash_reopen_cancel", width="stretch"):
+                    st.session_state.pop(REOPEN_OPEN_KEY, None)
+                    st.rerun()
+
+    # 弹窗需要跨 rerun 保持打开，直到用户确认 / 取消（否则按钮事件会丢失）
+    pending = st.session_state.get(CLOSE_DIALOG_KEY)
+    if pending:
+        _close_period_dialog(str(pending))
+    theme.disclaimer()
+
+
 def render() -> None:
     """渲染首页驾驶舱。"""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -247,6 +472,8 @@ def render() -> None:
         f"利润 {F.fmt_money(data.get('ytd_profit'))}"
     )
     theme.disclaimer()
+
+    _render_closing_card()
 
     _render_reminders(data)
     theme.disclaimer()

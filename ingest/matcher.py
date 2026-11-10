@@ -24,6 +24,7 @@ from typing import Any
 from engine.money import round2
 from ledger import expense_ledger, income_ledger, journal
 from ledger.audit import log_user_action
+from ledger.locks import ensure_open
 from ledger.store import table
 
 from ingest._common import name_similarity, now_text, parse_date
@@ -321,6 +322,7 @@ def confirm_match(match_id: str, *, post_journal: bool = True) -> dict[str, Any]
             f"{abs(invoice_total - transaction_amount):.2f} 元，已按发票金额入账，请核对。"
         )
     entry_date = _first_text(invoice.get("invoice_date"), transaction.get("transaction_date"))
+    ensure_open(entry_date, action="票据匹配入账")
     description = _invoice_description(invoice, transaction)
 
     if invoice_direction == "销项":

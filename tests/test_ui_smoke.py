@@ -217,3 +217,59 @@ def test_ingest_confirm_all_generates_ledger() -> None:
     assert ledger.table("journal_entries").count() > 0, "确认后应生成记账凭证"
     captions = "\n".join(caption.value for caption in at.caption)
     assert "台账与凭证" in captions, "确认后应展示生成的台账与凭证号提示"
+
+
+def test_dashboard_closing_card_renders_empty() -> None:
+    """首页驾驶舱：空数据下「期间结账」卡片正常渲染（当前/上月状态、结账/反结账入口）。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("🏠 首页驾驶舱").run()
+    _assert_clean(at, "首页（结账卡片）")
+
+    labels = [button.label for button in at.button]
+    assert any("立即结账" in label for label in labels), "首页应有「立即结账」按钮"
+    assert any("反结账" in label for label in labels), "首页应有「反结账」按钮"
+    metric_labels = [metric.label for metric in at.metric]
+    assert any("当前月" in label for label in metric_labels), "结账卡片应展示当前月状态"
+    assert any("上月" in label for label in metric_labels), "结账卡片应展示上月状态"
+    assert any("最近已结账" in label for label in metric_labels), "结账卡片应展示最近已结账月份"
+
+
+def test_settings_data_management_renders() -> None:
+    """设置页数据管理：备份 / 恢复 / 归档区域渲染正常，无错误提示。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("⚙️ 设置").run()
+    _assert_clean(at, "设置（数据管理）")
+
+    labels = [button.label for button in at.button]
+    assert any("创建备份" in label for label in labels), "数据管理应有「创建备份」按钮"
+    assert any("预览备份内容" in label for label in labels), "数据管理应有备份预览按钮"
+    assert any("清空全部台账" in label for label in labels), "数据管理应有清空台账入口"
+    captions = "\n".join(caption.value for caption in at.caption)
+    assert "备份" in captions or "归档" in captions
+    html_text = "\n".join(element.value for element in at.html)
+    assert "仅供参考" in html_text, "设置页应展示免责声明"
+
+    # 后端就绪时：创建备份按钮可点击且不崩溃（临时数据目录）
+    create_buttons = [button for button in at.button if button.label == "🗄️ 创建备份"]
+    if create_buttons and not create_buttons[0].disabled:
+        create_buttons[0].click().run()
+        _assert_clean(at, "设置（创建备份后）")
+
+
+def test_filing_archive_panel_renders_and_click_safe() -> None:
+    """申报填报：归档按钮与状态徽标渲染正常；按钮可点击时点击不异常。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("📋 申报填报").run()
+    _assert_clean(at, "申报填报（归档面板）")
+
+    labels = [button.label for button in at.button]
+    assert any("归档本期申报包" in label for label in labels), "申报页应有「归档本期申报包」按钮"
+    assert any("校验归档" in label for label in labels), "申报页应有「校验归档」按钮"
+    metric_labels = [metric.label for metric in at.metric]
+    assert any("期间结账状态" in label for label in metric_labels), "申报页应展示期间结账状态"
+    assert any("申报包归档" in label for label in metric_labels), "申报页应展示归档状态"
+
+    archive_buttons = [button for button in at.button if "归档本期申报包" in button.label]
+    if archive_buttons and not archive_buttons[0].disabled:
+        archive_buttons[0].click().run()
+        _assert_clean(at, "申报填报（归档后）")

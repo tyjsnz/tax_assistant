@@ -22,7 +22,7 @@ from typing import Any, Iterable
 import config
 from engine.money import round2
 from engine.tax_calendar import period_range
-from ledger import models
+from ledger import locks, models
 from ledger.audit import log_user_action
 from ledger.store import table
 
@@ -165,6 +165,7 @@ def add_income(
             "note": note,
         }
     )
+    locks.ensure_open(record["date"], action="新增收入")
     added = table(TABLE_NAME).append(record)
     log_user_action(
         "新增收入",
@@ -198,6 +199,7 @@ def update_income(income_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     current = get_income(income_id)
     if current is None:
         raise KeyError(f"{TABLE_LABEL}中不存在编号 {income_id}")
+    locks.ensure_open(current["date"], action="修改收入")
     merged = dict(current)
     for key, value in patch.items():
         if key in ("id", "created_at"):
@@ -209,6 +211,7 @@ def update_income(income_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     if "client" in patch:
         merged["client"] = _client_text(merged.get("client"))
     record = models.normalize_income(merged)
+    locks.ensure_open(record["date"], action="修改收入")
     updated = table(TABLE_NAME).update(income_id, record)
     log_user_action(
         "修改收入",
@@ -219,7 +222,11 @@ def update_income(income_id: str, patch: dict[str, Any]) -> dict[str, Any]:
 
 
 def delete_income(income_id: str) -> bool:
-    """按编号删除收入记录，返回是否删除成功。"""
+    """按编号删除收入记录，返回是否删除成功；已结账期间禁止删除。"""
+    current = get_income(income_id)
+    if current is None:
+        return False
+    locks.ensure_open(current["date"], action="删除收入")
     deleted = table(TABLE_NAME).delete(income_id)
     if deleted:
         log_user_action("删除收入", f"删除编号 {income_id}")
@@ -257,6 +264,8 @@ def import_income_csv(path: Any) -> int:
             records.append(models.normalize_income(payload))
         except ValueError:
             continue
+    for record in records:
+        locks.ensure_open(record["date"], action="导入收入")
     added = table(TABLE_NAME).append_many(records)
     log_user_action("导入收入CSV", f"文件 {csv_path.name}，成功导入 {len(added)} 条")
     return len(added)

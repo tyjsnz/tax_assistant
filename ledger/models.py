@@ -74,6 +74,15 @@ INGEST_STATUSES: tuple[str, ...] = ("待匹配", "已匹配", "已入账", "已�
 #: 匹配建议状态
 MATCH_STATUSES: tuple[str, ...] = ("建议", "已确认", "已忽略")
 
+#: 会计期间类型（月结 / 季结）
+PERIOD_TYPES: tuple[str, ...] = ("月", "季")
+
+#: 会计期间状态机：未结账 → 已结账 →（申报）已申报 → 已归档；反结账回到未结账
+PERIOD_STATUSES: tuple[str, ...] = ("未结账", "已结账", "已申报", "已归档")
+
+#: 归档包类型
+ARCHIVE_KINDS: tuple[str, ...] = ("申报包", "结账包", "其他")
+
 DIRECTIONS: tuple[str, ...] = ("借", "贷")
 
 # 小规模纳税人征收率（3% 减按 1%）
@@ -396,6 +405,58 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("note", "str", "备注"),
             _col("created_at", "str", "创建时间"),
             _col("confirmed_at", "str", "确认时间"),
+        ],
+    },
+    # 会计期间（月结/季结状态机，P0-3）
+    "periods": {
+        "file": "periods.csv",
+        "prefix": "PER",
+        "label": "会计期间",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("period", "period", "期间"),
+            _col("period_type", "str", "期间类型"),
+            _col("status", "str", "状态"),
+            _col("closed_at", "str", "结账时间"),
+            _col("closed_by", "str", "结账人"),
+            _col("reopened_at", "str", "反结账时间"),
+            _col("snapshot_hash", "str", "快照哈希"),
+            _col("snapshot_json", "json", "快照数据"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+            _col("updated_at", "str", "更新时间"),
+        ],
+    },
+    # 归档包（申报包 / 结账包，P0-3）
+    "archives": {
+        "file": "archives.csv",
+        "prefix": "ARC",
+        "label": "归档包",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("period", "period", "期间"),
+            _col("kind", "str", "类型"),
+            _col("path", "str", "文件路径"),
+            _col("file_hash", "str", "文件哈希"),
+            _col("size_bytes", "int", "文件大小"),
+            _col("manifest_json", "json", "清单"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+        ],
+    },
+    # 数据备份（P0-3）
+    "backups": {
+        "file": "backups.csv",
+        "prefix": "BAK",
+        "label": "数据备份",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("path", "str", "文件路径"),
+            _col("file_hash", "str", "文件哈希"),
+            _col("size_bytes", "int", "文件大小"),
+            _col("manifest_json", "json", "清单"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
         ],
     },
     # 申报记录（填报进度）

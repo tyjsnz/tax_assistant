@@ -9,6 +9,11 @@ Web 界面是主要使用方式（``.venv/bin/streamlit run ui/streamlit_app.py`
     python main.py demo
     python main.py ingest --invoices examples/invoices/*.xml --bank examples/bank/*.csv --confirm-score 90
     python main.py pool
+    python main.py periods
+    python main.py close --period 2026-01
+    python main.py archive --period 2026Q1
+    python main.py backup --tag before_close
+    python main.py restore --file data/backups/backup_xxx.zip --yes
     python main.py chat
 """
 
@@ -122,6 +127,159 @@ def cmd_demo(args: argparse.Namespace) -> int:
     if extras:
         print("  " + "；".join(f"{key} = {value:,.2f}" for key, value in extras.items() if isinstance(value, (int, float))))
     print(f"\n提示：启动界面后可在「首页/台账」查看示例数据。{config.DISCLAIMER}")
+    return 0
+
+
+def cmd_periods(args: argparse.Namespace) -> int:
+    """查看会计期间结账状态与金额概览。"""
+    from closing import periods as period_store
+
+    rows = period_store.list_periods(limit=args.limit)
+    if args.json:
+        _print_json({"periods": rows})
+        return 0
+    print("\n🗓️ 会计期间状态")
+    print("-" * 78)
+    print(f"  {'期间':<10}{'类型':<6}{'状态':<8}{'收入(不含税)':>16}{'费用':>14}{'利润':>14}")
+    for row in rows:
+        print(
+            f"  {str(row.get('period')):<10}{str(row.get('period_type')):<6}{str(row.get('status')):<8}"
+            f"{float(row.get('income_exclusive') or 0):>16,.2f}"
+            f"{float(row.get('expense') or 0):>14,.2f}"
+            f"{float(row.get('profit') or 0):>14,.2f}"
+        )
+    print("-" * 78)
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def _confirm(prompt: str) -> bool:
+    """交互确认（非交互环境返回 False）。"""
+    try:
+        if not sys.stdin.isatty():
+            return False
+        answer = input(f"{prompt} [y/N] ").strip().lower()
+        return answer in {"y", "yes", "是"}
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
+def cmd_close(args: argparse.Namespace) -> int:
+    """执行期间结账：先做结账前检查，再生成损益结转凭证并锁定期间。"""
+    from closing import checks, close
+
+    report = checks.pre_close_checks(args.period)
+    print(f"\n🗓️ {report.get('period_label') or args.period} 结账前检查：{report.get('level')}")
+    print("-" * 78)
+    for check in report.get("checks") or []:
+        icon = {"PASS": "✅", "WARNING": "⚠️", "ERROR": "❌"}.get(str(check.get("status")), "•")
+        print(f"  {icon} {check.get('name')}：{check.get('message')}")
+    print("-" * 78)
+    if not report.get("ok"):
+        print("  ❌ 存在阻断项，无法结账，请先处理上述 ERROR。")
+        return 1
+
+    warnings = report.get("warnings") or []
+    if warnings and not args.force:
+        if not _confirm(f"存在 {len(warnings)} 项提示，仍要继续结账吗？"):
+            print("  已取消结账（确认无异议后可加 --force 跳过确认）。")
+            return 1
+
+    result = close.close_period(args.period, operator="cli", force=args.force, note=args.note)
+    print(f"\n✅ {result.get('period')} 已结账，快照哈希 {str(result.get('snapshot_hash'))[:16]}…")
+    for entry in result.get("entries") or []:
+        print(f"  凭证 {entry.get('entry_no')}：", end="")
+        print("；".join(
+            f"{line.get('direction')} {line.get('account')} {float(line.get('amount') or 0):,.2f}"
+            for line in entry.get("lines") or []
+        ))
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def cmd_reopen(args: argparse.Namespace) -> int:
+    """反结账（仅最近一个已结账期间，需二次确认）。"""
+    from closing import close
+
+    if not args.yes and not _confirm(f"确认反结账 {args.period}？将删除自动生成的损益结转凭证"):
+        print("  已取消（非交互环境请加 --yes）。")
+        return 1
+    result = close.reopen_period(args.period, operator="cli", reason=args.reason or "")
+    print(f"\n↩️ {result.get('period')} 已反结账，已删除结转凭证："
+          f"{'、'.join(result.get('removed_entries') or []) or '无'}")
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def cmd_archive(args: argparse.Namespace) -> int:
+    """生成并归档本期申报包（Excel + PDF + SHA-256 清单）。"""
+    from archiving import filing_archive
+
+    result = filing_archive.archive_filing_package(args.period, include_pdf=not args.no_pdf, note=args.note)
+    print(f"\n📦 {args.period} 申报包已归档：{result.get('dir')}")
+    for item in result.get("files") or []:
+        print(f"  - {item.get('name')}  {item.get('size')} B  sha256:{str(item.get('sha256'))[:16]}…")
+    print(f"  清单：{result.get('manifest_path')}")
+    for warning in result.get("warnings") or []:
+        print(f"  ⚠️ {warning}")
+    if args.json:
+        _print_json(result)
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def cmd_backup(args: argparse.Namespace) -> int:
+    """创建数据备份（zip，不含 API Key）。"""
+    from archiving import backup
+
+    result = backup.create_backup(tag=args.tag or "", note=args.note or "")
+    print(f"\n💾 备份已创建：{result.get('path')}")
+    print(f"  大小 {result.get('size_bytes')} B  sha256:{str(result.get('file_hash'))[:16]}…")
+    print(f"  台账 {len(result.get('tables') or {})} 张，文件 {len(result.get('files') or [])} 个")
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def cmd_backups(args: argparse.Namespace) -> int:
+    """列出数据备份。"""
+    from archiving import backup
+
+    rows = backup.list_backups()
+    if args.json:
+        _print_json({"backups": rows})
+        return 0
+    print("\n💾 数据备份")
+    print("-" * 78)
+    for row in rows:
+        print(f"  {str(row.get('created_at') or '')}  {str(row.get('name')):<34}"
+              f"{int(row.get('size_bytes') or 0):>10} B  {'✓' if row.get('exists') else '缺失'}")
+    if not rows:
+        print("  （暂无备份，使用 main.py backup 创建）")
+    print("-" * 78)
+    return 0
+
+
+def cmd_restore(args: argparse.Namespace) -> int:
+    """恢复数据备份：默认只预览，--yes 才真正覆盖当前台账。"""
+    from archiving import restore
+
+    preview = restore.inspect_backup(args.file)
+    print(f"\n📂 备份预览：{preview.get('path')}")
+    print(f"  创建时间：{preview.get('created_at') or '—'}")
+    tables = preview.get("tables") or {}
+    print("  表与条数：" + "，".join(f"{name} {count} 条" for name, count in tables.items()))
+    verify = preview.get("verify") or {}
+    print(f"  完整性校验：{'✅ 通过' if verify.get('ok') else '❌ 未通过'}")
+    if not args.yes:
+        print("\n  仅预览，未写入数据。确认后加 --yes 执行恢复（恢复前会自动安全备份）。")
+        return 0
+    result = restore.restore_backup(args.file, dry_run=False, safety_backup=not args.no_safety, operator="cli")
+    print(f"\n✅ 已恢复：")
+    for item in result.get("restored") or []:
+        print(f"  - {item.get('table')} {item.get('rows')} 条")
+    if result.get("safety_backup"):
+        print(f"  恢复前安全备份：{result.get('safety_backup')}")
+    print(f"  {config.DISCLAIMER}")
     return 0
 
 
@@ -269,6 +427,45 @@ def build_parser() -> argparse.ArgumentParser:
     p_pool = sub.add_parser("pool", help="查看票据池 / 流水池 / 匹配概览")
     p_pool.add_argument("--json", action="store_true", help="输出 JSON")
     p_pool.set_defaults(func=cmd_pool)
+
+    p_periods = sub.add_parser("periods", help="查看会计期间结账状态")
+    p_periods.add_argument("--limit", type=int, default=12)
+    p_periods.add_argument("--json", action="store_true")
+    p_periods.set_defaults(func=cmd_periods)
+
+    p_close = sub.add_parser("close", help="期间结账（生成损益结转凭证并锁定）")
+    p_close.add_argument("--period", required=True, help="期间，如 2026-01 或 2026Q1")
+    p_close.add_argument("--force", action="store_true", help="跳过 WARNING 确认（ERROR 仍会阻断）")
+    p_close.add_argument("--note", default="")
+    p_close.set_defaults(func=cmd_close)
+
+    p_reopen = sub.add_parser("reopen", help="反结账（仅最近一期）")
+    p_reopen.add_argument("--period", required=True)
+    p_reopen.add_argument("--reason", default="")
+    p_reopen.add_argument("--yes", action="store_true", help="跳过交互确认")
+    p_reopen.set_defaults(func=cmd_reopen)
+
+    p_archive = sub.add_parser("archive", help="归档申报包（Excel + PDF + SHA-256 清单）")
+    p_archive.add_argument("--period", required=True, help="申报所属期，如 2026Q1")
+    p_archive.add_argument("--no-pdf", action="store_true", help="不生成 PDF")
+    p_archive.add_argument("--note", default="")
+    p_archive.add_argument("--json", action="store_true")
+    p_archive.set_defaults(func=cmd_archive)
+
+    p_backup = sub.add_parser("backup", help="创建数据备份（zip，不含 API Key）")
+    p_backup.add_argument("--tag", default="")
+    p_backup.add_argument("--note", default="")
+    p_backup.set_defaults(func=cmd_backup)
+
+    p_backups = sub.add_parser("backups", help="列出数据备份")
+    p_backups.add_argument("--json", action="store_true")
+    p_backups.set_defaults(func=cmd_backups)
+
+    p_restore = sub.add_parser("restore", help="恢复数据备份（默认仅预览）")
+    p_restore.add_argument("--file", required=True, help="备份 zip 路径或备份编号")
+    p_restore.add_argument("--yes", action="store_true", help="确认执行恢复（覆盖当前台账）")
+    p_restore.add_argument("--no-safety", action="store_true", help="恢复前不做安全备份（不推荐）")
+    p_restore.set_defaults(func=cmd_restore)
 
     p_chat = sub.add_parser("chat", help="命令行 AI 对话")
     p_chat.set_defaults(func=cmd_chat)

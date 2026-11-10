@@ -26,7 +26,7 @@ from engine.rd_deduction import (
     calc_rd_deduction,
 )
 from engine.tax_calendar import period_range, quarter_end, quarter_start
-from ledger import models
+from ledger import locks, models
 from ledger.audit import log_user_action
 from ledger.expense_ledger import list_expenses
 from ledger.store import table
@@ -143,6 +143,7 @@ def add_rd_record(
             "note": note,
         }
     )
+    locks.ensure_open(record["period"], action="新增研发归集")
     added = table(TABLE_NAME).append(record)
     log_user_action(
         "新增研发归集",
@@ -179,6 +180,7 @@ def update_rd_record(rd_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     current = get_rd_record(rd_id)
     if current is None:
         raise KeyError(f"{TABLE_LABEL}中不存在编号 {rd_id}")
+    locks.ensure_open(current["period"], action="修改研发归集")
     merged = dict(current)
     for key, value in patch.items():
         if key in ("id", "created_at"):
@@ -187,13 +189,18 @@ def update_rd_record(rd_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     if any(key in patch for key in RD_ITEMS) and "deduction_amount" not in patch:
         merged.pop("deduction_amount", None)
     record = models.normalize_rd(merged)
+    locks.ensure_open(record["period"], action="修改研发归集")
     updated = table(TABLE_NAME).update(rd_id, record)
     log_user_action("修改研发归集", f"编号 {rd_id}：{updated['project_name']} 合计 {updated['total']:.2f} 元")
     return updated
 
 
 def delete_rd_record(rd_id: str) -> bool:
-    """按编号删除研发归集记录，返回是否删除成功。"""
+    """按编号删除研发归集记录，返回是否删除成功；已结账期间禁止删除。"""
+    current = get_rd_record(rd_id)
+    if current is None:
+        return False
+    locks.ensure_open(current["period"], action="删除研发归集")
     deleted = table(TABLE_NAME).delete(rd_id)
     if deleted:
         log_user_action("删除研发归集", f"删除编号 {rd_id}")
@@ -361,6 +368,8 @@ def import_rd_csv(path: Any) -> int:
                     continue
     except (OSError, csv.Error, UnicodeDecodeError) as exc:
         raise ValueError(f"读取 CSV 失败：{exc}") from exc
+    for record in records:
+        locks.ensure_open(record["period"], action="导入研发辅助账")
     added = table(TABLE_NAME).append_many(records)
     log_user_action("导入研发辅助账CSV", f"文件 {csv_path.name}，成功导入 {len(added)} 条")
     return len(added)

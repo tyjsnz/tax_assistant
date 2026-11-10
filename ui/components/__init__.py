@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "archive_api",
     "cache",
     "formatting",
     "ledger_api",

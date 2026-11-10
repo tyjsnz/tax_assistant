@@ -10,7 +10,7 @@ import streamlit as st
 
 import config
 import ledger
-from ui.components import cache, formatting as F, ledger_api as LA, runtime, theme, ui
+from ui.components import archive_api as AA, cache, formatting as F, ledger_api as LA, runtime, theme, ui
 
 FLASH_KEY = "_settings_flash"
 PRIVACY_KEY = "settings_privacy_mode"
@@ -259,10 +259,503 @@ def _render_company_tab() -> None:
 
 
 # =============================================================================
-# 数据管理
+# 数据管理（含 P0-3 备份 / 恢复 / 归档）
 # =============================================================================
+STATE_BACKUP_RESULT = "_settings_backup_result"
+STATE_BACKUP_VERIFY = "_settings_backup_verify_result"
+STATE_RESTORE_INSPECT = "_settings_restore_inspect"
+STATE_RESTORE_PATH = "_settings_restore_path"
+STATE_RESTORE_RESULT = "_settings_restore_result"
+STATE_ARCHIVE_VERIFY = "_settings_archive_verify_result"
+
+
+def _backup_path(result: dict) -> Path:
+    raw = result.get("path") or result.get("backup_path") or ""
+    return Path(str(raw)) if raw else Path("")
+
+
+def _backup_sha(result: dict, path: Path) -> str:
+    for key in ("file_hash", "sha256", "hash"):
+        value = result.get(key)
+        if value:
+            return str(value)
+    return AA.sha256_file(path) if path and path.exists() else ""
+
+
+def _render_backup_result(result: dict) -> None:
+    """展示最近一次创建的备份：路径、大小、SHA-256、清单。"""
+    if not isinstance(result, dict) or not result:
+        return
+    path = _backup_path(result)
+    size = result.get("size_bytes") or result.get("size") or (
+        path.stat().st_size if path and path.exists() else 0
+    )
+    sha = _backup_sha(result, path)
+    with st.container(border=True):
+        st.markdown("**最近一次备份**")
+        ui.metric_row(
+            [
+                {"label": "文件大小", "value": AA.fmt_size(size)},
+                {"label": "备份文件数", "value": f"{len(result.get('files') or [])} 个"},
+                {"label": "创建时间", "value": str(result.get("created_at") or "—")},
+            ],
+            columns=3,
+        )
+        st.caption(f"备份路径：{path or '—'}")
+        st.caption(f"SHA-256：{sha or '—'}")
+        tables = result.get("tables") or {}
+        if isinstance(tables, dict) and tables:
+            st.dataframe(
+                pd.DataFrame([{"数据表": name, "记录数": count} for name, count in tables.items()]),
+                hide_index=True,
+                width="stretch",
+            )
+        if path and path.exists():
+            st.download_button(
+                "⬇️ 下载备份 zip",
+                data=path.read_bytes(),
+                file_name=path.name,
+                mime="application/zip",
+                key="settings_backup_download",
+                width="content",
+            )
+
+
+def _create_backup(tag: str, note: str, include_logs: bool) -> None:
+    try:
+        result = AA.create_backup(tag=tag.strip(), include_logs=bool(include_logs), note=note.strip())
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"创建备份失败：{exc}")
+        return
+    st.session_state[STATE_BACKUP_RESULT] = result
+    cache.clear()
+    _flash(f"备份已创建：{_backup_path(result).name or result.get('path') or ''}")
+    st.rerun()
+
+
+def _verify_backup(target: str, label: str = "") -> None:
+    try:
+        result = AA.verify_backup(target)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"备份校验失败：{exc}")
+        return
+    st.session_state[STATE_BACKUP_VERIFY] = {"label": label, "result": result}
+    st.rerun()
+
+
+def _delete_backup(target: str) -> None:
+    try:
+        AA.delete_backup(target)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"删除备份失败：{exc}")
+        return
+    cache.clear()
+    _flash("备份已删除。", "warning")
+    st.rerun()
+
+
+def _render_backup_verify() -> None:
+    payload = st.session_state.get(STATE_BACKUP_VERIFY) or {}
+    result = payload.get("result") or {}
+    if not result:
+        return
+    with st.container(border=True):
+        st.markdown(f"**备份校验结果{('：' + payload.get('label')) if payload.get('label') else ''}**")
+        ui.status_alert(
+            "PASS" if result.get("ok") else "ERROR",
+            "备份文件与 manifest 哈希一致。" if result.get("ok") else "备份校验未通过，请检查 tampered / missing 明细。",
+        )
+        files = result.get("files") or []
+        if files:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "文件": item.get("name"),
+                            "期望哈希": AA.short_hash(item.get("expected"), 16),
+                            "实际哈希": AA.short_hash(item.get("actual"), 16),
+                            "结果": "✅ 一致" if item.get("ok") else "❌ 不一致",
+                        }
+                        for item in files
+                    ]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+        for name in result.get("tampered") or []:
+            st.error(f"文件被篡改：{name}")
+        for name in result.get("missing") or []:
+            st.warning(f"文件缺失：{name}")
+
+
+def _render_backup_section() -> None:
+    with st.container(border=True):
+        st.markdown("**创建备份**")
+        st.caption(
+            "备份内容：data/ 下全部台账 CSV + manifest.json + README.txt（可选审计日志）；"
+            "**绝不包含** API Key（user_settings.json）、上传目录与历史备份。"
+        )
+        cols = st.columns([2, 2, 1, 2])
+        with cols[0]:
+            tag = st.text_input("标签（可选）", key="settings_backup_tag", placeholder="如 monthly")
+        with cols[1]:
+            note = st.text_input("备注（可选）", key="settings_backup_note")
+        with cols[2]:
+            include_logs = st.checkbox("包含审计日志", value=True, key="settings_backup_logs")
+        with cols[3]:
+            st.write("")
+            if st.button(
+                "🗄️ 创建备份",
+                key="settings_backup_create",
+                type="primary",
+                width="stretch",
+                disabled=not AA.backup_ready(),
+            ):
+                _create_backup(tag, note, include_logs)
+        if not AA.backup_ready():
+            ui.module_missing("创建备份", "archiving.backup", detail=AA.missing_detail())
+        result = st.session_state.get(STATE_BACKUP_RESULT)
+        if result:
+            _render_backup_result(result)
+
+    st.markdown("**备份列表**")
+    try:
+        backups = AA.list_backups()
+    except Exception as exc:  # noqa: BLE001
+        ui.failure("读取备份列表失败。", exc, show_traceback=False)
+        backups = []
+    if not backups:
+        st.caption("暂无备份记录。点击上方「创建备份」生成第一份。")
+        return
+    st.caption(f"共 {len(backups)} 份备份 · 目录：{AA.backup_dir()}")
+    for index, backup in enumerate(backups[:10]):
+        backup_id = str(backup.get("id") or backup.get("path") or index)
+        label = str(backup.get("file_name") or Path(str(backup.get("path") or "")).name or backup_id)
+        with st.container(border=True):
+            info, verify_col, delete_col = st.columns([6, 1, 1])
+            with info:
+                st.markdown(f"**{label}**")
+                st.caption(
+                    f"创建时间：{backup.get('created_at') or '—'} · 大小：{backup.get('size_text') or AA.fmt_size(backup.get('size_bytes'))}"
+                    f" · 文件数：{backup.get('file_count') or 0} · 存在：{'是' if backup.get('exists') else '否'}"
+                )
+                st.caption(
+                    f"哈希摘要：{backup.get('file_hash_short') or AA.short_hash(backup.get('file_hash'))}"
+                    + (f" · 备注：{backup.get('note')}" if backup.get("note") else "")
+                )
+            with verify_col:
+                if st.button(
+                    "校验",
+                    key=f"settings_backup_verify_{backup_id}",
+                    width="stretch",
+                    disabled=not AA.backup_manage_ready(),
+                ):
+                    _verify_backup(str(backup.get("id") or backup.get("path") or ""), label)
+            with delete_col:
+                if st.button(
+                    "删除",
+                    key=f"settings_backup_delete_{backup_id}",
+                    width="stretch",
+                    disabled=not AA.backup_manage_ready(),
+                ):
+                    _delete_backup(str(backup.get("id") or backup.get("path") or ""))
+    _render_backup_verify()
+
+
+def _render_restore_preview(inspect_result: dict, staged_path: str) -> None:
+    """展示备份预览 + 恢复确认。"""
+    if not isinstance(inspect_result, dict) or not inspect_result:
+        return
+    verify = inspect_result.get("verify") or {}
+    ok = bool(verify.get("ok", inspect_result.get("ok", False)))
+    with st.container(border=True):
+        st.markdown("**备份内容预览**")
+        ui.status_alert(
+            "PASS" if ok else "ERROR",
+            "备份 manifest 校验通过，可以恢复。" if ok else "备份校验未通过，已禁止恢复。",
+        )
+        st.caption(
+            f"备份文件：{Path(str(inspect_result.get('path') or staged_path or '')).name or '—'}"
+            f" · 创建时间：{inspect_result.get('created_at') or '—'}"
+            f" · 应用版本：{inspect_result.get('app_version') or '—'}"
+        )
+        tables = inspect_result.get("tables") or {}
+        if isinstance(tables, dict) and tables:
+            st.dataframe(
+                pd.DataFrame([{"数据表": name, "记录数": count} for name, count in tables.items()]),
+                hide_index=True,
+                width="stretch",
+            )
+        files = inspect_result.get("files") or []
+        if files:
+            with st.expander(f"备份文件清单（{len(files)} 个）", expanded=False):
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "文件": item.get("name"),
+                                "大小": AA.fmt_size(item.get("size")),
+                                "SHA-256": AA.short_hash(item.get("sha256"), 20),
+                            }
+                            for item in files
+                        ]
+                    ),
+                    hide_index=True,
+                    width="stretch",
+                )
+        for warning in inspect_result.get("warnings") or []:
+            st.warning(str(warning))
+        confirm = st.checkbox(
+            "我已阅读并确认：恢复将覆盖当前全部台账数据（系统会先自动创建安全备份）",
+            key="settings_restore_confirm",
+        )
+        restore_target = str(inspect_result.get("path") or staged_path or "")
+        if st.button(
+            "♻️ 执行恢复",
+            key="settings_restore_run",
+            type="primary",
+            width="content",
+            disabled=not confirm or not ok or not AA.restore_ready(),
+        ):
+            try:
+                with st.spinner("正在恢复备份（含安全备份）…"):
+                    result = AA.restore_backup(restore_target, dry_run=False, safety_backup=True)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"恢复失败：{exc}")
+            else:
+                st.session_state[STATE_RESTORE_RESULT] = result
+                cache.clear()
+                _flash("备份恢复完成，台账已更新。")
+                st.rerun()
+        if not AA.restore_ready():
+            ui.module_missing("备份恢复", "archiving.restore", detail=AA.missing_detail())
+        theme.disclaimer(inspect_result.get("disclaimer"))
+
+
+def _render_restore_result(result: dict) -> None:
+    if not isinstance(result, dict) or not result:
+        return
+    with st.container(border=True):
+        st.markdown("**最近一次恢复结果**")
+        restored = result.get("restored") or []
+        ui.metric_row(
+            [
+                {"label": "恢复数据表", "value": f"{len(restored)} 个"},
+                {"label": "安全备份", "value": "已创建" if result.get("safety_backup") else "未创建"},
+            ],
+            columns=2,
+        )
+        if restored:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "数据表": item.get("table"),
+                            "恢复条数": item.get("rows"),
+                        }
+                        for item in restored
+                    ]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+        if result.get("safety_backup"):
+            st.caption(f"恢复前安全备份：{result.get('safety_backup')}")
+        if result.get("message"):
+            st.info(str(result.get("message")), icon="♻️")
+        for warning in result.get("warnings") or []:
+            st.warning(str(warning))
+
+
+def _render_restore_section() -> None:
+    with st.container(border=True):
+        st.markdown("**恢复备份**")
+        st.caption(
+            "上传 backup_*.zip → 预览表与条数并校验 → 勾选确认 → 恢复。"
+            "恢复前会自动创建安全备份；仅恢复 manifest 白名单内的台账 CSV（拒绝 zip-slip / 哈希不符）。"
+        )
+        uploaded = st.file_uploader("上传备份 zip", type=["zip"], key="settings_restore_upload")
+        inspect_result = st.session_state.get(STATE_RESTORE_INSPECT)
+        staged_path = str(st.session_state.get(STATE_RESTORE_PATH) or "")
+        cols = st.columns([2, 2, 4])
+        with cols[0]:
+            if st.button(
+                "🔍 预览备份内容",
+                key="settings_restore_inspect_btn",
+                width="stretch",
+                disabled=uploaded is None or not AA.restore_ready(),
+            ):
+                try:
+                    staged = AA.stage_upload(uploaded.getvalue(), uploaded.name)
+                    result = AA.inspect_backup(str(staged))
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"预览备份失败：{exc}")
+                else:
+                    st.session_state[STATE_RESTORE_INSPECT] = result
+                    st.session_state[STATE_RESTORE_PATH] = str(staged)
+                    st.session_state.pop(STATE_RESTORE_RESULT, None)
+                    st.rerun()
+        with cols[1]:
+            st.caption("上传文件仅暂存本地 data/uploads/，不联网。")
+        if inspect_result:
+            _render_restore_preview(inspect_result, staged_path)
+        restore_result = st.session_state.get(STATE_RESTORE_RESULT)
+        if restore_result:
+            _render_restore_result(restore_result)
+
+
+def _verify_archive_record(target: str, label: str = "") -> None:
+    try:
+        result = AA.verify_archive(target)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"归档校验失败：{exc}")
+        return
+    st.session_state[STATE_ARCHIVE_VERIFY] = {"label": label, "result": result}
+    st.rerun()
+
+
+def _render_archive_verify() -> None:
+    payload = st.session_state.get(STATE_ARCHIVE_VERIFY) or {}
+    result = payload.get("result") or {}
+    if not result:
+        return
+    with st.container(border=True):
+        st.markdown(f"**归档校验结果{('：' + payload.get('label')) if payload.get('label') else ''}**")
+        ui.status_alert(
+            "PASS" if result.get("ok") else "ERROR",
+            "归档文件与 manifest 一致，未被篡改。" if result.get("ok") else "归档校验未通过，请检查 tampered / missing。",
+        )
+        files = result.get("files") or []
+        if files:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "文件": item.get("name"),
+                            "期望哈希": AA.short_hash(item.get("expected"), 16),
+                            "实际哈希": AA.short_hash(item.get("actual"), 16),
+                            "结果": "✅ 一致" if item.get("ok") else "❌ 不一致",
+                        }
+                        for item in files
+                    ]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+        for name in result.get("tampered") or []:
+            st.error(f"文件被篡改：{name}")
+        for name in result.get("missing") or []:
+            st.warning(f"文件缺失：{name}")
+        st.caption(f"校验时间：{result.get('checked_at') or '—'} · 归档目录：{AA.archive_dir()}")
+
+
+def _render_archive_section() -> None:
+    with st.container(border=True):
+        st.markdown("**归档包**")
+        st.caption(f"归档目录：{AA.archive_dir()} · 归档包为只读快照（Excel + PDF + manifest 哈希）。")
+        try:
+            archives = AA.list_archives()
+        except Exception as exc:  # noqa: BLE001
+            ui.failure("读取归档列表失败。", exc, show_traceback=False)
+            archives = []
+        if not archives:
+            st.caption("暂无归档记录。可在「📋 申报填报」页点击「📦 归档本期申报包」生成。")
+            return
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "期间": row.get("period"),
+                        "类型": row.get("kind"),
+                        "创建时间": row.get("created_at"),
+                        "文件": row.get("file_name") or Path(str(row.get("path") or "")).name,
+                        "大小": row.get("size_text") or AA.fmt_size(row.get("size_bytes")),
+                        "哈希摘要": row.get("file_hash_short") or AA.short_hash(row.get("file_hash")),
+                        "文件存在": "是" if row.get("exists") else "否",
+                    }
+                    for row in archives[:20]
+                ]
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        verify_cols = st.columns([2, 2, 5])
+        with verify_cols[0]:
+            first = archives[0]
+            if st.button(
+                "🔍 校验最新归档",
+                key="settings_archive_verify_btn",
+                width="stretch",
+                disabled=not AA.archive_verify_ready(),
+            ):
+                _verify_archive_record(
+                    str(first.get("id") or first.get("path") or ""),
+                    f"{first.get('period')} · {first.get('kind')}",
+                )
+        with verify_cols[1]:
+            st.caption(f"共 {len(archives)} 份归档记录")
+        with verify_cols[2]:
+            if not AA.archive_verify_ready():
+                st.caption("归档校验模块尚未就绪。")
+        _render_archive_verify()
+
+
+def _render_sample_actions() -> None:
+    """示例数据 / 清空台账 / CSV 快速副本。"""
+    cols = st.columns(3)
+    with cols[0]:
+        if st.button("🧪 加载示例数据", key="settings_seed", width="stretch"):
+            try:
+                LA.seed_demo_data(reset=False)
+            except Exception as exc:  # noqa: BLE001
+                ui.failure("加载示例数据失败。", exc)
+            else:
+                cache.clear()
+                _flash("示例数据已加载。")
+                st.rerun()
+    with cols[1]:
+        if st.button("♻️ 重新生成示例数据", key="settings_seed_reset", width="stretch"):
+            try:
+                LA.seed_demo_data(reset=True)
+            except Exception as exc:  # noqa: BLE001
+                ui.failure("重新生成示例数据失败。", exc)
+            else:
+                cache.clear()
+                _flash("示例数据已重新生成（原有台账已清空）。")
+                st.rerun()
+    with cols[2]:
+        with st.expander("📄 CSV 快速副本（演示用）", expanded=False):
+            if st.button("复制全部台账 CSV", key="settings_csv_copy", width="stretch"):
+                try:
+                    backups = LA.backup_all("manual")
+                except Exception as exc:  # noqa: BLE001
+                    ui.failure("备份失败。", exc)
+                else:
+                    st.success(f"已复制 {len(backups)} 个 CSV 到 {config.BACKUP_DIR}")
+
+    with st.container(border=True):
+        st.markdown("**清空全部台账**")
+        confirm = st.checkbox(
+            "我确认要清空全部台账数据（收入 / 费用 / 研发 / 合同 / 申报记录，不含日志与期间状态）",
+            key="settings_clear_confirm",
+        )
+        if st.button("🗑️ 清空全部台账", key="settings_clear", disabled=not confirm, width="content"):
+            try:
+                LA.clear_all()
+            except Exception as exc:  # noqa: BLE001
+                ui.failure("清空台账失败。", exc)
+            else:
+                cache.clear()
+                _flash("全部台账已清空。", "warning")
+                st.rerun()
+
+
 def _render_data_tab() -> None:
-    ui.section("💾 数据管理", "所有台账与设置均保存在本地；备份会复制到 data/backups。")
+    """数据管理：存储统计、备份 / 恢复、归档包、示例数据与清空。"""
+    ui.section(
+        "💾 数据管理",
+        "所有台账与设置均保存在本地；备份为含 manifest 哈希的 zip，恢复前自动创建安全备份。",
+    )
     try:
         stats = LA.storage_stats()
     except Exception:  # noqa: BLE001
@@ -275,62 +768,39 @@ def _render_data_tab() -> None:
         "journal_lines": "分录行",
         "contracts": "合同台账",
         "filings": "申报记录",
+        "invoices": "发票池",
+        "bank_transactions": "银行流水池",
+        "matches": "匹配建议",
+        "periods": "会计期间",
+        "archives": "归档包",
+        "backups": "数据备份",
     }
     if stats:
         st.dataframe(
-            pd.DataFrame([{"数据表": labels.get(name, name), "记录数": count} for name, count in stats.items()]),
+            pd.DataFrame(
+                [{"数据表": labels.get(name, name), "记录数": count} for name, count in stats.items()]
+            ),
             hide_index=True,
             width="stretch",
         )
 
-    cols = st.columns(3)
-    with cols[0]:
-        if st.button("🗄️ 备份全部台账", key="settings_backup", width="stretch"):
-            try:
-                backups = LA.backup_all("manual")
-            except Exception as exc:  # noqa: BLE001
-                ui.failure("备份失败。", exc)
-            else:
-                st.success(f"已备份 {len(backups)} 个数据文件到 {config.BACKUP_DIR}")
-                with st.expander("备份文件列表", expanded=False):
-                    for path in backups:
-                        st.caption(str(path))
-    with cols[1]:
-        if st.button("🧪 加载示例数据", key="settings_seed", width="stretch"):
-            try:
-                LA.seed_demo_data(reset=False)
-            except Exception as exc:  # noqa: BLE001
-                ui.failure("加载示例数据失败。", exc)
-            else:
-                cache.clear()
-                _flash("示例数据已加载。")
-                st.rerun()
-    with cols[2]:
-        if st.button("♻️ 重新生成示例数据", key="settings_seed_reset", width="stretch"):
-            try:
-                LA.seed_demo_data(reset=True)
-            except Exception as exc:  # noqa: BLE001
-                ui.failure("重新生成示例数据失败。", exc)
-            else:
-                cache.clear()
-                _flash("示例数据已重新生成（原有台账已清空）。")
-                st.rerun()
+    st.markdown("---")
+    ui.section("🗄️ 备份与恢复", "备份可随时校验 / 删除；恢复前自动安全备份，可演练。")
+    _render_backup_section()
+    st.markdown("")
+    _render_restore_section()
 
-    with st.container(border=True):
-        st.markdown("**清空全部台账**")
-        confirm = st.checkbox("我确认要清空全部台账数据（收入 / 费用 / 研发 / 合同 / 申报记录，不含日志）", key="settings_clear_confirm")
-        if st.button("🗑️ 清空全部台账", key="settings_clear", disabled=not confirm, width="content"):
-            try:
-                LA.clear_all()
-            except Exception as exc:  # noqa: BLE001
-                ui.failure("清空台账失败。", exc)
-            else:
-                cache.clear()
-                _flash("全部台账已清空。", "warning")
-                st.rerun()
+    st.markdown("---")
+    ui.section("🗄️ 归档包", "申报包归档记录与哈希校验。")
+    _render_archive_section()
+
+    st.markdown("---")
+    ui.section("🧪 示例数据", "演示与回归测试用；重新生成会清空原有台账。")
+    _render_sample_actions()
 
     st.caption(
-        f"数据目录：{config.DATA_DIR} · 导出目录：{config.EXPORT_DIR} · 备份目录：{config.BACKUP_DIR} · 日志目录：{config.LOGS_DIR}"
+        f"数据目录：{config.DATA_DIR} · 导出目录：{config.EXPORT_DIR} · "
+        f"备份目录：{AA.backup_dir()} · 归档目录：{AA.archive_dir()} · 日志目录：{config.LOGS_DIR}"
     )
     theme.disclaimer()
 

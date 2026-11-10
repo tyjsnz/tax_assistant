@@ -19,11 +19,13 @@ import streamlit as st
 import config
 import ledger
 from engine import completion_checklist, current_quarter, format_date_cn, period_label, quarter_options
-from ui.components import cache, formatting as F, runtime, theme, ui
+from ui.components import archive_api as AA, cache, formatting as F, runtime, theme, ui
 
 FLASH_KEY = "_filing_flash"
 STATE_BUNDLES = "filing_bundles"
 STATE_CHECKS = "filing_checks"
+STATE_ARCHIVE_RESULT = "filing_archive_result"
+STATE_ARCHIVE_VERIFY = "filing_archive_verify_result"
 
 TOTAL_LABELS = {
     # 增值税
@@ -640,15 +642,307 @@ def _render_guides_summary(bundles: Sequence[dict]) -> None:
 
 
 # =============================================================================
+# 期间结账状态 / 申报包归档（P0-3）
+# =============================================================================
+def _closure_text(period: str) -> str:
+    """季度结账状态文案（已结账 / 部分已结 / 未结账）。"""
+    closure = AA.quarter_closure(period)
+    quarter_status = str(closure.get("quarter_status") or "未结账")
+    if quarter_status != "未结账":
+        return quarter_status
+    if closure.get("all_closed"):
+        return "已结账"
+    return f"未结账（{int(closure.get('closed_count') or 0)}/{int(closure.get('total') or 3)} 月已结）"
+
+
+def _render_closure_badges(period: str) -> None:
+    """期间结账状态 + 归档状态徽标、各月结账明细。"""
+    closure = AA.quarter_closure(period)
+    try:
+        archived = AA.has_archive(period)
+    except Exception:  # noqa: BLE001
+        archived = False
+    statuses = closure.get("statuses") or {}
+    ui.metric_row(
+        [
+            {
+                "label": "期间结账状态",
+                "value": ("🔒 " if closure.get("all_closed") or closure.get("quarter_status") != "未结账" else "⬜ ") + _closure_text(period),
+                "icon": ":material/lock:",
+                "help": "结账后期间台账与凭证锁定；ERROR 检查项未通过时无法结账。",
+            },
+            {
+                "label": "申报包归档",
+                "value": "🗄️ 已归档" if archived else "⬜ 未归档",
+                "icon": ":material/archive:",
+                "help": f"归档目录：{AA.archive_dir()}",
+            },
+            {
+                "label": "已结账月份",
+                "value": f"{int(closure.get('closed_count') or 0)} / {int(closure.get('total') or 3)}",
+                "icon": ":material/event_available:",
+            },
+        ],
+        columns=3,
+    )
+    if statuses:
+        month_text = " · ".join(
+            f"{AA.month_label(month)} {status}" for month, status in statuses.items()
+        )
+        st.caption(f"各月结账状态：{month_text}（结账在「首页驾驶舱 → 期间结账」操作）")
+
+
+def _run_archive(period: str, include_pdf: bool, note: str) -> None:
+    """执行申报包归档。"""
+    try:
+        with st.spinner("正在生成并归档申报包（Excel + PDF + manifest）…"):
+            result = AA.archive_filing_package(period, include_pdf=include_pdf, note=note)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"申报包归档失败：{exc}")
+        return
+    st.session_state[STATE_ARCHIVE_RESULT] = result
+    st.session_state.pop(STATE_ARCHIVE_VERIFY, None)
+    cache.clear()
+    _flash(
+        f"{period_label(period)} 申报包已归档"
+        + (f"，manifest {AA.short_hash(result.get('manifest_hash'), 16)}" if result.get("manifest_hash") else "")
+    )
+    st.rerun()
+
+
+def _run_verify_archive(target: str) -> None:
+    """校验归档包哈希与完整性。"""
+    if not target:
+        st.warning("未找到可校验的归档记录。")
+        return
+    try:
+        with st.spinner("正在校验归档文件哈希…"):
+            result = AA.verify_archive(target)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"归档校验失败：{exc}")
+        return
+    st.session_state[STATE_ARCHIVE_VERIFY] = result
+    st.rerun()
+
+
+def _render_archive_result(result: dict) -> None:
+    """展示最近一次归档结果：文件、manifest 哈希、校验结论。"""
+    if not isinstance(result, dict) or not result:
+        return
+    files = result.get("files") or []
+    checks_summary = result.get("checks_summary") or {}
+    errors = int(checks_summary.get("ERROR") or 0)
+    warnings = int(checks_summary.get("WARNING") or 0)
+    with st.container(border=True):
+        st.markdown("**最近一次归档结果**")
+        ui.metric_row(
+            [
+                {"label": "归档文件", "value": f"{len(files)} 个"},
+                {"label": "PDF", "value": "已生成" if result.get("pdf") else "未生成"},
+                {"label": "申报表", "value": f"{len(result.get('forms') or [])} 张"},
+                {"label": "校验告警", "value": f"{warnings} 提示 / {errors} 错误"},
+            ],
+            columns=4,
+        )
+        if files:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "文件": item.get("name"),
+                            "大小": AA.fmt_size(item.get("size")),
+                            "SHA-256": AA.short_hash(item.get("sha256"), 20),
+                        }
+                        for item in files
+                    ]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+        cols = st.columns(2)
+        with cols[0]:
+            st.caption(f"归档目录：{result.get('dir') or AA.archive_dir()}")
+            if result.get("manifest_path"):
+                st.caption(
+                    f"manifest：{Path(str(result['manifest_path'])).name} · "
+                    f"哈希 {AA.short_hash(result.get('manifest_hash'), 20)}"
+                )
+        with cols[1]:
+            download_targets = [
+                item
+                for item in files
+                if str(item.get("path") or "").lower().endswith((".xlsx", ".pdf"))
+            ]
+            for index, item in enumerate(download_targets[:2]):
+                path = Path(str(item.get("path") or ""))
+                if not path.exists():
+                    continue
+                st.download_button(
+                    f"⬇️ 下载 {path.name}",
+                    data=path.read_bytes(),
+                    file_name=path.name,
+                    mime=(
+                        "application/pdf"
+                        if path.suffix.lower() == ".pdf"
+                        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    ),
+                    key=f"filing_archive_download_{index}_{path.stem}",
+                    width="stretch",
+                )
+        for warning in result.get("warnings") or []:
+            st.warning(str(warning))
+        theme.disclaimer(result.get("disclaimer"))
+
+
+def _render_archive_verify(result: dict) -> None:
+    """展示归档校验结果。"""
+    if not isinstance(result, dict) or not result:
+        return
+    ok = bool(result.get("ok"))
+    with st.container(border=True):
+        st.markdown("**归档校验结果**")
+        ui.status_alert(
+            "PASS" if ok else "ERROR",
+            "归档文件哈希与 manifest 一致，未被篡改。" if ok else "归档文件校验未通过，请检查 tampered / missing 明细。",
+        )
+        files = result.get("files") or []
+        if files:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "文件": item.get("name"),
+                            "期望哈希": AA.short_hash(item.get("expected"), 16),
+                            "实际哈希": AA.short_hash(item.get("actual"), 16),
+                            "结果": "✅ 一致" if item.get("ok") else "❌ 不一致",
+                        }
+                        for item in files
+                    ]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+        for name in result.get("tampered") or []:
+            st.error(f"文件被篡改：{name}")
+        for name in result.get("missing") or []:
+            st.warning(f"文件缺失：{name}")
+        st.caption(f"校验时间：{result.get('checked_at') or '—'}")
+        theme.disclaimer(result.get("disclaimer"))
+
+
+def _render_archive_panel(period: str) -> None:
+    """申报包归档面板：归档按钮、结果、校验与历史归档列表。"""
+    ui.section(
+        "📦 申报包归档",
+        "归档生成 Excel + PDF + SHA-256 manifest（只读快照），可随时校验是否被篡改；"
+        "归档不改变期间状态，建议结账后再归档。",
+    )
+    ready = AA.archiving_ready()
+    closure = AA.quarter_closure(period)
+    cols = st.columns([1, 2, 2, 4])
+    with cols[0]:
+        include_pdf = st.checkbox("同时生成 PDF", value=True, key="filing_archive_pdf")
+    with cols[1]:
+        note = st.text_input("归档备注（可选）", key="filing_archive_note", placeholder="如：2026Q1 归档")
+    with cols[2]:
+        st.write("")
+        if st.button(
+            "📦 归档本期申报包",
+            key="filing_archive_run",
+            type="primary",
+            width="stretch",
+            disabled=not ready,
+            help="生成 Excel + PDF + manifest 并复制到 data/archive/{期间}",
+        ):
+            _run_archive(period, include_pdf, note)
+    with cols[3]:
+        if not ready:
+            ui.module_missing("申报包归档", "archiving.filing_archive", detail=AA.missing_detail())
+        elif not closure.get("all_closed") and closure.get("quarter_status") == "未结账":
+            st.caption("提示：本期尚未完成结账。归档仍可执行，但建议先结账再归档，保证归档包与账面一致。")
+
+    result = st.session_state.get(STATE_ARCHIVE_RESULT)
+    if result:
+        _render_archive_result(result)
+
+    try:
+        archives = AA.list_archives()
+    except Exception as exc:  # noqa: BLE001
+        ui.failure("读取归档记录失败。", exc, show_traceback=False)
+        archives = []
+    period_archives = [row for row in archives if str(row.get("period") or "") == str(period)]
+    verify_cols = st.columns([2, 2, 5])
+    with verify_cols[0]:
+        if st.button(
+            "🔍 校验归档",
+            key="filing_verify_archive",
+            width="stretch",
+            disabled=not (AA.archive_verify_ready() and period_archives),
+            help="按 manifest 重新计算文件 SHA-256，检测篡改/缺失",
+        ):
+            target = period_archives[0]
+            _run_verify_archive(str(target.get("id") or target.get("path") or ""))
+    with verify_cols[1]:
+        st.caption(f"本期归档记录：{len(period_archives)} 条")
+    with verify_cols[2]:
+        st.caption(f"归档目录：{AA.archive_dir()}")
+
+    verify_result = st.session_state.get(STATE_ARCHIVE_VERIFY)
+    if verify_result:
+        _render_archive_verify(verify_result)
+
+    with st.expander(f"🗂️ 历史归档列表（{len(archives)} 条）", expanded=bool(archives)):
+        if not archives:
+            st.info("暂无归档记录。点击上方「📦 归档本期申报包」生成第一份归档。", icon="🗄️")
+            return
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "期间": row.get("period"),
+                        "类型": row.get("kind"),
+                        "创建时间": row.get("created_at"),
+                        "文件": row.get("file_name") or Path(str(row.get("path") or "")).name,
+                        "大小": row.get("size_text") or AA.fmt_size(row.get("size_bytes")),
+                        "哈希摘要": row.get("file_hash_short") or AA.short_hash(row.get("file_hash")),
+                        "文件存在": "是" if row.get("exists") else "否",
+                    }
+                    for row in archives[:20]
+                ]
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        verify_missing = not AA.archive_verify_ready()
+        for index, row in enumerate(archives[:5]):
+            row_label = f"{row.get('period')} · {row.get('kind')} · {row.get('created_at') or '—'}"
+            if st.button(
+                f"🔍 校验 {row_label}",
+                key=f"filing_verify_archive_row_{index}_{row.get('id') or index}",
+                disabled=verify_missing,
+                width="content",
+            ):
+                _run_verify_archive(str(row.get("id") or row.get("path") or ""))
+    theme.disclaimer()
+
+
+# =============================================================================
 # 页面入口
 # =============================================================================
 def render() -> None:
     """渲染申报填报页。"""
+    header_period = str(st.session_state.get("filing_period") or current_quarter())
+    try:
+        archived_hint = "已归档" if AA.has_archive(header_period) else "未归档"
+    except Exception:  # noqa: BLE001
+        archived_hint = "未归档"
     ui.page_header(
         "申报填报",
         "生成、校验、导出并跟踪季度申报表；申报数据全部来自本地台账与确定性算税引擎。",
         icon="📋",
-        right_text=f"当前季度：{period_label(current_quarter())}",
+        right_text=(
+            f"当前季度：{period_label(header_period)} · 结账：{_closure_text(header_period)} · 归档：{archived_hint}"
+        ),
     )
     _show_flash()
 
@@ -657,9 +951,10 @@ def render() -> None:
         ui.module_missing("申报表生成", "filing.registry", detail=runtime.error_of("filing.registry"))
 
     periods = list(quarter_options(count=8))
+    default_index = periods.index(header_period) if header_period in periods else 0
     cols = st.columns([2, 2, 2])
     with cols[0]:
-        period = st.selectbox("税款所属期", periods, index=0, key="filing_period")
+        period = st.selectbox("税款所属期", periods, index=default_index, key="filing_period")
     with cols[1]:
         st.write("")
         if st.button("🔄 生成申报表", key="filing_generate", type="primary", width="stretch"):
@@ -667,6 +962,8 @@ def render() -> None:
     with cols[2]:
         st.write("")
         st.caption("生成后请逐表核对栏次，再导出 / 保存草稿 / 标记已申报。")
+
+    _render_closure_badges(period)
 
     bundles = list(st.session_state.get(STATE_BUNDLES, {}).get(period, []) or [])
     checks = st.session_state.get(STATE_CHECKS, {}).get(period, {}) or {}
@@ -676,26 +973,21 @@ def render() -> None:
             "生成增值税、企业所得税预缴、财务报表与印花税申报表。",
             icon="📋",
         )
-        _render_progress(period, bundles)
-        _render_guides_summary(bundles)
-        theme.disclaimer()
-        return
+    else:
+        ui.metric_row(
+            [
+                {"label": "申报表数量", "value": f"{len(bundles)}"},
+                {"label": "校验通过", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) == 'PASS')}"},
+                {"label": "需关注", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) in {'WARNING', 'ERROR'})}"},
+            ],
+            columns=3,
+        )
+        for index, bundle in enumerate(bundles):
+            form_id = str(bundle.get("form_id"))
+            _render_bundle(bundle, checks.get(form_id) or {}, period, index)
+        _render_export(period, bundles)
 
-    total_status = checks.get("__summary__") or {}
-    ui.metric_row(
-        [
-            {"label": "申报表数量", "value": f"{len(bundles)}"},
-            {"label": "校验通过", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) == 'PASS')}"},
-            {"label": "需关注", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) in {'WARNING', 'ERROR'})}"},
-        ],
-        columns=3,
-    )
-
-    for index, bundle in enumerate(bundles):
-        form_id = str(bundle.get("form_id"))
-        _render_bundle(bundle, checks.get(form_id) or {}, period, index)
-
-    _render_export(period, bundles)
+    _render_archive_panel(period)
     _render_progress(period, bundles)
     _render_guides_summary(bundles)
     theme.disclaimer()

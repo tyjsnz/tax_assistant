@@ -20,7 +20,7 @@ from typing import Any
 
 from engine.money import round2
 from engine.tax_calendar import period_label, quarter_range
-from ledger import models
+from ledger import locks, models
 from ledger.audit import log_journal, log_user_action
 from ledger.income_ledger import period_totals as income_period_totals
 from ledger.store import table
@@ -289,14 +289,17 @@ def next_entry_no(date: Any = None) -> str:
     return f"{prefix}{max_seq + 1:04d}"
 
 
-def post_entry(entry: dict[str, Any]) -> dict[str, Any]:
+def post_entry(entry: dict[str, Any], *, check_lock: bool = True) -> dict[str, Any]:
     """登记一张凭证（写凭证头与分录行），返回登记后的完整凭证。
 
     校验：至少一行分录、科目非空、金额非负、借贷平衡、凭证号不重复。
+    ``check_lock=False`` 时跳过期间锁校验，仅供结账模块生成/删除结转凭证内部使用。
     """
     if not isinstance(entry, dict):
         raise ValueError("凭证必须是 dict")
     date_text = models.normalize_date(entry.get("date"))
+    if check_lock:
+        locks.ensure_open(date_text, action="生成凭证")
     description = str(entry.get("description") or "").strip()
     voucher_type = str(entry.get("voucher_type") or "其他").strip()
     if voucher_type not in VOUCHER_TYPES:
@@ -371,11 +374,13 @@ def post_entry(entry: dict[str, Any]) -> dict[str, Any]:
     return posted
 
 
-def post_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def post_entries(
+    entries: list[dict[str, Any]], *, check_lock: bool = True
+) -> list[dict[str, Any]]:
     """批量登记凭证（逐张校验并写入），返回已登记凭证列表。"""
     posted = []
     for entry in entries or []:
-        posted.append(post_entry(entry))
+        posted.append(post_entry(entry, check_lock=check_lock))
     if posted:
         log_user_action("批量生成分录", f"共登记 {len(posted)} 张凭证")
     return posted
