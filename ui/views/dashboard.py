@@ -427,6 +427,17 @@ def render() -> None:
 
     company = ui.company_snapshot()
     theme.company_card(company)
+    try:
+        region = config.get_region()
+        rate = float(region.get("city_maintenance_tax_rate") or 0.07)
+        full = float(region.get("surtax_rate_full") or 0.12)
+        discounted = float(region.get("surtax_rate_discounted") or 0.06)
+        st.caption(
+            f"📍 地区：{region.get('label') or '未指定地区'} · 城建税 {rate * 100:.0f}% · "
+            f"附加税费综合 {full * 100:.0f}%（六税两费减半后 {discounted * 100:.1f}%）"
+        )
+    except Exception:  # noqa: BLE001 - 地区信息缺失不影响驾驶舱
+        pass
 
     if ledger_api.is_empty():
         ui.empty_state(

@@ -177,6 +177,31 @@ class TestVAT:
         # 金额口径在新旧政策下保持一致（免税额相同）
         assert old["vat_payable"] == new["vat_payable"] == 0
 
+    def test_surtax_by_region_city_rate(self):
+        """附加税费随城建税地区税率变化（市区7% / 县城5% / 其他1%）。"""
+        vat = 4000.0
+        base = 404000
+        r7 = calc_vat(base, 0, "2026Q1")  # 默认公司：云南省昆明市区 7%
+        assert r7["city_maintenance_tax_rate"] == pytest.approx(0.07)
+        assert r7["surtax"] == pytest.approx(vat * 0.12 * 0.5)  # 240
+        assert r7["return_lines"]["surtax_city"] == pytest.approx(vat * 0.07 * 0.5)
+        r5 = calc_vat(base, 0, "2026Q1", city_maintenance_tax_rate=0.05)
+        assert r5["surtax"] == pytest.approx(vat * 0.10 * 0.5)  # 200
+        assert r5["return_lines"]["surtax_city"] == pytest.approx(vat * 0.05 * 0.5)
+        r1 = calc_vat(base, 0, "2026Q1", city_maintenance_tax_rate=0.01)
+        assert r1["surtax"] == pytest.approx(vat * 0.06 * 0.5)  # 120
+        assert r1["return_lines"]["surtax_city"] == pytest.approx(vat * 0.01 * 0.5)
+        # 非法税率回退 7%
+        r_invalid = calc_vat(base, 0, "2026Q1", city_maintenance_tax_rate=0.03)
+        assert r_invalid["surtax"] == pytest.approx(r7["surtax"])
+
+    def test_rate_table_contains_region(self):
+        table = get_rate_table("2026Q1")
+        surtax_row = next(row for row in table if "附加税费" in row["项目"])
+        assert "城建税 7%" in surtax_row["取值"]
+        assert "教育费附加 3%" in surtax_row["取值"]
+        assert "地方教育附加 2%" in surtax_row["取值"]
+
     def test_disclaimer_and_breakdown_present(self):
         result = calc_vat(103000, 0, "2026Q1")
         assert result["disclaimer"] == DISCLAIMER

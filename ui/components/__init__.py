@@ -9,6 +9,7 @@ from __future__ import annotations
 __all__ = [
     "archive_api",
     "cache",
+    "company_api",
     "formatting",
     "ledger_api",
     "runtime",

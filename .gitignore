@@ -20,3 +20,9 @@ ocr/bin/
 
 # 归档快照与备份文件（大文件/生成物，不入库；保留 archives.csv 索引）
 data/archive/
+
+# 多公司账套：每家公司只有台账 CSV 入库，备份/上传/归档/日志不入库
+data/companies/*/backups/
+data/companies/*/uploads/
+data/companies/*/archive/
+data/logs/

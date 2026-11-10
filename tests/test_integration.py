@@ -297,12 +297,17 @@ class TestSettings:
             config.set_api_key("")
 
     def test_company_overrides(self):
-        config.save_user_settings({"company": {"short_name": "测试公司"}})
+        """多公司：编辑当前公司信息后，config.get_company 立即生效。"""
+        import workspace
+
+        active = workspace.active_company_id()
+        original = config.get_company().get("short_name")
+        workspace.update_company(active, {"short_name": "测试公司"})
         try:
             assert config.get_company()["short_name"] == "测试公司"
-            assert config.get_company()["name"]  # 默认企业名仍在
+            assert config.get_company()["name"]  # 企业名仍在
         finally:
-            config.save_user_settings({"company": {}})
+            workspace.update_company(active, {"short_name": original})
 
 
 # =============================================================================

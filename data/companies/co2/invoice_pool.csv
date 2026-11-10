@@ -1,0 +1,1 @@
+﻿id,invoice_no,invoice_code,invoice_date,invoice_type,direction,seller,buyer,amount_exclusive,tax_amount,total_inclusive,status,source_file,source_format,raw_json,note,created_at

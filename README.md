@@ -44,6 +44,11 @@
 | ![台账管理](docs/screenshots/02_ledger.png) | ![AI 助手](docs/screenshots/07_assistant.png) |
 | 收入/费用/研发/合同四类台账 | 无 Key 也可用的确定性问答与工具轨迹 |
 
+| 🏢 多公司切换（账套隔离） | ⚙️ 企业信息（多公司 + 地区税率） |
+|---|---|
+| ![多公司切换](docs/screenshots/22_p1a_company_switched.png) | ![企业信息](docs/screenshots/23_p1a_settings_companies.png) |
+| 侧边栏一键切换公司，台账/归档/备份完全隔离 | 公司 CRUD + 地区预设（城建税 7%/5%/1%） |
+
 | 🔒 期间结账（检查清单） | 📦 归档与备份（Excel+PDF+哈希） |
 |---|---|
 | ![期间结账检查](docs/screenshots/17_close_checks.png) | ![归档与备份](docs/screenshots/20_settings_data.png) |
@@ -67,6 +72,8 @@
 
 | 模块 | 能力 | 实现方式 |
 |---|---|---|
+| 🏢 多公司 / 多账套 | 公司注册表、独立账套目录、侧边栏一键切换、新建/编辑/删除；首次升级自动迁移旧数据 | 本地 JSON 注册表 + 目录命名空间，账套之间数据完全隔离 |
+| 🗺️ 地区参数化 | 城建税地区税率（市区 7% / 县城·镇 5% / 其他 1%）、教育费附加 3%、地方教育附加 2%；申报与归档自动引用 | 地区预设 + 公司级参数，算税/申报表联动 |
 | 🧮 算税引擎 | 增值税及附加、企业所得税（年度/季度预缴）、研发费用加计扣除、印花税 | **确定性 Python 代码**（Decimal 精确计算），LLM 不参与计算 |
 | 📒 台账管理 | 收入 / 费用 / 研发辅助账 / 合同台账，自然语言录入，CSV 导入导出，分录自动生成 | SQLite 之外轻量 CSV 台账 + 原子写入 |
 | 📥 票据与流水 | 批量导入数电票（XML/OFD/PDF）与银行流水（CSV/Excel），去重入池、自动匹配、一键确认入账并生成凭证 | 本地解析（xml/zipfile/pypdf/openpyxl）+ 确定性匹配打分 |
@@ -107,7 +114,8 @@ pip install -r requirements.txt
 
 浏览器访问终端输出的地址（默认 <http://localhost:8501>）。
 
-> 首次进入可点击侧边栏「⚙️ 设置 → 加载示例数据」，立即体验完整流程。
+> 首次进入可点击侧边栏「⚙️ 设置 → 加载示例数据」，立即体验完整流程；
+> 多家公司可在侧边栏「当前公司」切换，或在「设置 → 企业信息」新建公司账套。
 > 所有示例数据均为虚构，可在设置页一键清空。
 
 ### 2.3 命令行方式（可选）
@@ -122,6 +130,11 @@ pip install -r requirements.txt
 # 导入发票与银行流水，并自动确认高置信度匹配入账
 .venv/bin/python main.py ingest --invoices "examples/invoices/*.xml" --bank "examples/bank/*.csv" --confirm-score 90
 .venv/bin/python main.py pool          # 查看票据池/流水池/匹配概览
+
+# 多公司（账套）与地区
+.venv/bin/python main.py companies     # 公司列表（当前公司标记）
+.venv/bin/python main.py company-add --name "第二公司" --region yunnan-county-town --switch
+.venv/bin/python main.py regions       # 地区预设与城建税税率
 
 # 命令行对话（需 API Key）
 .venv/bin/python main.py chat
@@ -174,7 +187,7 @@ API 地址默认 `https://api.deepseek.com`（兼容 OpenAI 协议），如有�
 | 🔍 **申报核对** | 上传申报表截图（或手动粘贴栏次文本）→ 本地 OCR 识别 → 字段映射 → 与台账/引擎结果逐栏比对 → PASS/WARNING/ERROR 差异报告 |
 | 📚 **政策知识库** | 按关键词/分类检索政策，查看文号、生效日期、来源、留存资料与注意事项；一键检查政策时效 |
 | 🤖 **AI 助手** | 用自然语言提问（"这个季度开了 8 万普票，增值税怎么算？""今天收到云图科技 20600 元技术服务费，开了普票"），助手调用工具完成记账/算税/查政策/生成申报表 |
-| ⚙️ **设置** | DeepSeek Key 配置与连接测试、模型切换、企业信息维护、隐私模式（客户名脱敏）、**数据备份/恢复（zip+哈希校验）**、**归档包列表与校验**、示例数据、审计日志、免责声明 |
+| ⚙️ **设置** | DeepSeek Key 配置与连接测试、模型切换、**多公司管理（新建/切换/编辑/删除）与地区参数**、隐私模式（客户名脱敏）、**数据备份/恢复（zip+哈希校验）**、**归档包列表与校验**、示例数据、审计日志、免责声明 |
 
 ---
 
@@ -206,7 +219,8 @@ API 地址默认 `https://api.deepseek.com`（兼容 OpenAI 协议），如有�
 tax/
 ├── README.md                  # 本文档
 ├── requirements.txt
-├── config.py                  # 企业信息、政策参数、路径、DeepSeek 配置、本地设置读写
+├── config.py                  # 全局配置：路径、政策参数、地区预设、DeepSeek、设置读写
+├── workspace.py               # 多公司（多账套）：注册表、目录切换、旧数据迁移、schema 版本
 ├── main.py                    # 命令行入口（算税/生成申报包/对话）
 ├── pytest.ini
 ├── .env.example               # API Key 配置模板
@@ -274,7 +288,11 @@ tax/
 │   ├── views/                 # 九个页面（含票据与流水）
 │   └── components/            # 指标卡、空态、免责声明等组件
 ├── .streamlit/config.toml     # 主题（税务蓝）
-├── data/                      # 台账 CSV、用户设置、上传、备份（本地）
+├── data/                      # 本地数据根目录
+│   ├── companies.json         # 公司注册表（当前激活公司）
+│   ├── schema.json            # 数据 schema 版本（自动迁移）
+│   ├── user_settings.json     # 全局设置（API Key 等，不入库）
+│   └── companies/{id}/        # 每家公司独立账套：台账 CSV、archive/、backups/、uploads/
 ├── logs/                      # 审计日志 CSV
 ├── exports/                   # 导出的申报包
 ├── examples/                  # 示例发票 XML 与银行流水 CSV（可导入试用）
@@ -385,11 +403,32 @@ tax/
 > 原则：**结账后不改账**；要改先反结账。归档是只读快照，备份可演练恢复。
 > 所有哈希基于 SHA-256 + 规范化 JSON，任何环节被改动都能被发现。
 
+### 7.9 多公司（多账套）与地区参数化
+
+**目录布局**
+
+```text
+data/
+├── companies.json                 # 公司注册表（active = 当前激活公司）
+├── schema.json                    # 数据布局版本（升级时自动迁移）
+├── user_settings.json             # 全局设置（API Key/模型，不随公司切换）
+├── logs/                          # 全局审计日志
+└── companies/{company_id}/        # 每家公司独立账套
+    ├── income_ledger.csv …        # 全部台账、期间、归档索引
+    ├── archive/                   # 申报包归档
+    └── backups/                   # 数据备份
+```
+
+* 侧边栏可一键切换公司；**切换只切 `config.DATA_DIR`**，台账/期间/归档/备份随之隔离；
+* 新建公司自动初始化独立账套；删除默认软删除（移动到 `companies/_deleted/`），且不能删除当前/唯一公司；
+* **首次升级自动迁移**：旧版根目录 `data/*.csv` 会移动到 `companies/main/`，旧设置中的企业信息写入首家公司，数据不丢；
+* 地区预设决定城建税税率（市区 7% / 县城·镇 5% / 其他 1%），附加税费 = 增值税 ×（城建 + 教育 3% + 地方教育 2%）× 六税两费减半；算税、申报表、归档自动引用当前公司地区。
+
 ---
 
 ## 8. 安全、隐私与审计
 
-1. **数据不出本地**：台账、设置、导出文件全部位于项目 `data/`、`logs/`、`exports/`；
+1. **数据不出本地**：台账、设置、导出文件全部位于项目 `data/`（按公司账套隔离）、`logs/`、`exports/`；
    除 AI 问答/政策问答/截图文字理解会把必要文本片段发送给 DeepSeek 官方 API 外，无任何数据上传。
 2. **API Key 安全**：仅保存在 `data/user_settings.json`（chmod 600），界面只显示脱敏值；
    审计日志不记录 Key；`.env` 与用户设置已在 `.gitignore` 中。
@@ -460,4 +499,4 @@ tax/
 
 ---
 
-*版本 1.3.0 · 最后更新：2026 年 11 月*
+*版本 1.4.0 · 最后更新：2026 年 11 月*

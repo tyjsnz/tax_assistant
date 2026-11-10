@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "active": "main",
+  "companies": [
+    {
+      "id": "main",
+      "name": "XXX网络科技开发有限公司",
+      "short_name": "XX科技",
+      "taxpayer_type": "小规模纳税人",
+      "industry": "网络科技（技术服务、软件开发）",
+      "unified_social_credit_code": "91530128059467473X",
+      "tax_authority": "国家税务总局昆明市税务局",
+      "province": "云南省",
+      "city": "昆明市",
+      "county": "云南省昆明市盘龙区税务局",
+      "region_id": "yunnan-kunming-urban",
+      "city_maintenance_tax_rate": 0.07,
+      "accounting_standard": "小企业会计准则",
+      "vat_levy_method": "按季申报",
+      "note": "",
+      "created_at": "2026-11-10 12:39:33",
+      "updated_at": "2026-11-10 12:39:33"
+    },
+    {
+      "name": "昆明云睿技术服务有限公司",
+      "short_name": "云睿技术",
+      "industry": "技术服务",
+      "unified_social_credit_code": "91530100MA6TEST02X",
+      "region_id": "yunnan-county-town",
+      "id": "co2",
+      "taxpayer_type": "小规模纳税人",
+      "tax_authority": "",
+      "province": "云南省",
+      "city": "",
+      "county": "",
+      "accounting_standard": "小企业会计准则",
+      "vat_levy_method": "按季申报",
+      "note": "",
+      "city_maintenance_tax_rate": 0.05,
+      "created_at": "2026-11-10 12:45:01",
+      "updated_at": "2026-11-10 12:45:01"
+    }
+  ],
+  "updated_at": "2026-11-10 12:45:36"
+}

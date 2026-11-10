@@ -375,6 +375,7 @@ def get_rate_table(period: str | date | None = None) -> list[dict[str, str]]:
     """供界面展示的适用税率/限额表（依据随期间动态切换）。"""
     params = get_params(period)
     sources = params["policy_sources"]
+    region = config.get_region()
     by_vat = [item for item in sources if item.get("applies_to") == "vat"]
 
     def _find(keyword: str) -> dict[str, str]:
@@ -419,7 +420,11 @@ def get_rate_table(period: str | date | None = None) -> list[dict[str, str]]:
         },
         {
             "项目": "附加税费（城建 + 教育 + 地方教育）",
-            "取值": f"{params['surtax_rate_full'] * 100:.0f}%，六税两费减半后 {params['surtax_rate'] * 100:.0f}%",
+            "取值": (
+                f"城建税 {region['city_maintenance_tax_rate'] * 100:.0f}% + 教育费附加 3% + 地方教育附加 2%"
+                f" = {region['surtax_rate_full'] * 100:.0f}%，六税两费减半后 {region['surtax_rate_discounted'] * 100:.0f}%"
+                f"（{region['label']}）"
+            ),
             "依据": surtax_source.get("source", "—"),
             "有效期": "2023-01-01 ~ 2027-12-31",
         },
@@ -461,6 +466,7 @@ def describe(period: str | date | None = None) -> dict[str, Any]:
         "vat_reduction_exclusions": params.get("vat_reduction_exclusions", []),
         "vat_threshold_per_transaction": params.get("vat_threshold_per_transaction", 0),
         "rates": get_rate_table(period),
+        "region": config.get_region(),
         "warnings": params["warnings"],
         "disclaimer": config.DISCLAIMER,
     }

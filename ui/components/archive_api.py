@@ -23,10 +23,6 @@ from engine import period_label, period_range
 from ledger import locks
 from ui.components import runtime
 
-#: 备份/归档上传文件暂存目录
-UPLOAD_DIR = Path(config.UPLOAD_DIR)
-
-
 # =============================================================================
 # 模块加载与就绪判断
 # =============================================================================
@@ -527,10 +523,15 @@ def restore_backup(
 
 
 def stage_upload(data: bytes, filename: str) -> Path:
-    """把上传的备份 zip 暂存到 uploads 目录，返回路径。"""
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    """把上传的备份 zip 暂存到**当前公司**的 uploads 目录，返回路径。
+
+    注意：必须在函数内动态读取 ``config.UPLOAD_DIR``，公司切换后该路径会变，
+    不能使用模块级缓存。
+    """
+    upload_dir = Path(config.UPLOAD_DIR)
+    upload_dir.mkdir(parents=True, exist_ok=True)
     safe_name = Path(str(filename or "backup.zip")).name
-    target = UPLOAD_DIR / f"restore_{datetime.now():%Y%m%d_%H%M%S}_{safe_name}"
+    target = upload_dir / f"restore_{datetime.now():%Y%m%d_%H%M%S}_{safe_name}"
     target.write_bytes(data)
     return target
 

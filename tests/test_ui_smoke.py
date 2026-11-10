@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+import config
+
 APP_PATH = str(Path(__file__).resolve().parents[1] / "ui" / "streamlit_app.py")
 
 PAGES = [
@@ -273,3 +275,89 @@ def test_filing_archive_panel_renders_and_click_safe() -> None:
     if archive_buttons and not archive_buttons[0].disabled:
         archive_buttons[0].click().run()
         _assert_clean(at, "申报填报（归档后）")
+
+
+def test_sidebar_company_switcher_renders() -> None:
+    """侧边栏存在公司切换器，并展示当前公司地区与城建税税率。"""
+    import workspace
+
+    at = _new_app()
+    _assert_clean(at, "首页（公司切换器）")
+    switcher = at.selectbox(key="company_switch")
+    assert switcher is not None, "侧边栏应有「当前公司」切换器"
+    assert str(switcher.value) == str(workspace.active_company_id())
+    captions = "\n".join(caption.value for caption in at.caption)
+    assert "城建税" in captions, "侧边栏应展示城建税税率"
+    assert "地区" in captions, "侧边栏应展示公司地区"
+
+
+def test_settings_company_tab_renders() -> None:
+    """设置页「企业信息」tab：当前公司表单、地区预设、公司列表、新建公司、工作区信息均渲染。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("⚙️ 设置").run()
+    _assert_clean(at, "设置（企业信息）")
+
+    assert at.text_input(key="settings_company_name") is not None
+    assert at.selectbox(key="settings_company_region") is not None, "应有地区预设选择框"
+    labels = [button.label for button in at.button]
+    assert any("保存当前公司信息" in label for label in labels)
+    assert any("新建公司" in label for label in labels)
+    assert any("切换" in label for label in labels)
+    assert any("删除" in label for label in labels)
+    captions = "\n".join(caption.value for caption in at.caption)
+    assert "当前地区" in captions
+    assert "城建税" in captions
+    assert "工作区" in "\n".join(markdown.value for markdown in at.markdown)
+
+
+def test_switch_company_via_sidebar() -> None:
+    """预置第二家公司后通过侧边栏切换：active_company_id 改变、数据目录隔离、各页正常渲染。"""
+    import workspace
+
+    workspace.ensure_default()
+    record = workspace.add_company(
+        {"name": "第二家测试公司", "short_name": "测试二", "region_id": "yunnan-county-town"},
+        activate_new=False,
+    )
+    second_id = str(record["id"])
+    first_id = workspace.active_company_id()
+    assert first_id != second_id
+
+    at = _new_app()
+    switcher = at.selectbox(key="company_switch")
+    assert len(switcher.options) >= 2
+
+    at.selectbox(key="company_switch").set_value(second_id).run()
+    _assert_clean(at, "切换公司后")
+
+    assert workspace.active_company_id() == second_id, "切换后 active_company_id 应更新"
+    assert str(config.DATA_DIR).endswith(second_id), "DATA_DIR 应切到新公司账套目录"
+    captions = "\n".join(caption.value for caption in at.caption)
+    assert "县城" in captions or "5%" in captions, "侧边栏地区应随公司切换"
+
+    for page in ("🏠 首页驾驶舱", "📒 台账管理", "🧮 算税工作台", "⚙️ 设置"):
+        at.radio(key="nav").set_value(page).run()
+        _assert_clean(at, f"切换公司后渲染{page}")
+
+
+def test_settings_create_company_via_form() -> None:
+    """设置页新建公司表单：填写名称提交后公司列表增加，且不出现页面错误。"""
+    import workspace
+
+    workspace.ensure_default()
+    before = len(workspace.list_companies())
+    at = _new_app()
+    at.radio(key="nav").set_value("⚙️ 设置").run()
+    _assert_clean(at, "设置（新建公司前）")
+
+    at.text_input(key="settings_new_company_name").set_value("UI 新建测试公司")
+    at.text_input(key="settings_new_company_short").set_value("UI测试")
+    at.selectbox(key="settings_new_company_region").set_value("generic-county-town")
+    [button for button in at.button if button.label == "新建公司"][0].click().run()
+    _assert_clean(at, "设置（新建公司后）")
+
+    companies = workspace.list_companies()
+    assert len(companies) == before + 1, "新建公司后公司数量应增加"
+    created = next((item for item in companies if item.get("name") == "UI 新建测试公司"), None)
+    assert created is not None
+    assert created.get("region_id") == "generic-county-town"

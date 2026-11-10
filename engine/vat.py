@@ -81,6 +81,7 @@ def calc_vat(
     surtax_rate: float | None = None,
     liutax_discount: float | None = None,
     limit_basis: str = "total",
+    city_maintenance_tax_rate: float | None = None,
 ) -> dict[str, Any]:
     """计算季度增值税及附加税费。
 
@@ -94,6 +95,8 @@ def calc_vat(
     surtax_rate               : 覆盖附加税费综合率（默认 6%，已含减半）
     liutax_discount           : 覆盖六税两费减半比例（默认 0.5）
     limit_basis               : ``total``（全部销售额，法定口径）或 ``ordinary``（仅普票+未开票）
+    city_maintenance_tax_rate : 城建税税率（市区 7%、县城/镇 5%、其他 1%）；默认取当前公司地区参数，
+                                教育费附加 3%、地方教育附加 2% 全国统一
 
     返回
     ----
@@ -106,7 +109,20 @@ def calc_vat(
     levy = Decimal(str(levy_rate if levy_rate is not None else params["vat_levy_rate"]))
     standard_rate = Decimal(str(params["vat_standard_rate"]))
     limit = Decimal(str(exemption_limit if exemption_limit is not None else params["vat_exemption_limit_quarter"]))
-    full_surtax_rate = Decimal(str(params["surtax_rate_full"]))
+    # 城建税税率按公司所在地区取值（市区 7%/县城或镇 5%/其他 1%）；教育费附加 3%、地方教育附加 2% 全国统一
+    if city_maintenance_tax_rate is None:
+        try:
+            city_rate_float = float(config.get_region().get("city_maintenance_tax_rate", 0.07))
+        except Exception:  # noqa: BLE001 - 地区配置异常时回退市区 7%
+            city_rate_float = 0.07
+    else:
+        city_rate_float = float(city_maintenance_tax_rate)
+    if city_rate_float not in (0.07, 0.05, 0.01):
+        city_rate_float = 0.07
+    city_rate = Decimal(str(city_rate_float))
+    education_rate = Decimal(str(config.EDUCATION_SURTAX_RATE))
+    local_education_rate = Decimal(str(config.LOCAL_EDUCATION_SURTAX_RATE))
+    full_surtax_rate = city_rate + education_rate + local_education_rate
     discount = Decimal(str(liutax_discount if liutax_discount is not None else params["liutax_liangfei_discount"]))
     if surtax_rate is not None:
         # 外部直接给定综合附加税率时，视为已含减半，不再二次打折
@@ -217,6 +233,11 @@ def calc_vat(
         "surtax_full": round2(surtax_full),
         "surtax_discount": round2(surtax_discount),
         "surtax_rate": round2(effective_surtax_rate * 100) / 100,
+        "surtax_rate_full": round2(full_surtax_rate * 100) / 100,
+        "city_maintenance_tax_rate": float(city_rate),
+        "education_surtax_rate": float(education_rate),
+        "local_education_surtax_rate": float(local_education_rate),
+        "region": config.get_region(),
         "liutax_discount": float(discount),
         "total_tax": round2(total_tax),
         "tax_burden": (round2(total_tax / total_exclusive) if total_exclusive > 0 else 0.0),
@@ -239,9 +260,9 @@ def calc_vat(
             "line_22_reduction": round2(vat_reduction),            # 第22栏 应纳税额减征额
             "line_24_payable": round2(vat_payable),                # 第24栏 本期应补（退）税额
             "line_10_exempt_sales": round2(exempt_sales),          # 第10栏 小微企业免税销售额
-            "surtax_city": round2(vat_payable * Decimal("0.07") * discount),  # 城建税
-            "surtax_education": round2(vat_payable * Decimal("0.03") * discount),
-            "surtax_local_education": round2(vat_payable * Decimal("0.02") * discount),
+            "surtax_city": round2(vat_payable * city_rate * discount),  # 城建税（地区税率）
+            "surtax_education": round2(vat_payable * education_rate * discount),
+            "surtax_local_education": round2(vat_payable * local_education_rate * discount),
         },
         "breakdown": [
             {"label": "季度含税销售额", "value": round2(total_inclusive)},

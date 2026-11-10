@@ -28,15 +28,74 @@ import streamlit as st  # noqa: E402
 
 import config  # noqa: E402
 import ledger  # noqa: E402
+import workspace  # noqa: E402
 
 config.ensure_dirs()
+workspace.ensure_default()   # 多公司：确保至少一家公司并激活（首次升级自动迁移旧数据）
 ledger.init_storage()
 
-from ui.components import nav, theme  # noqa: E402
+from ui.components import company_api, nav, theme  # noqa: E402
 from ui.components import ui as ui_components  # noqa: E402
 
 #: Streamlit 的控制流异常（st.rerun / st.stop）不能当成页面错误吞掉
 _CONTROL_FLOW = {"RerunException", "StopException", "ScriptControlException"}
+
+
+PENDING_COMPANY_KEY = "_pending_company"
+
+
+def _consume_pending_company() -> None:
+    """消费其他页面请求的公司切换（必须在 selectbox 实例化之前调用）。
+
+    设置页「切换 / 新建并切换」会写入 ``_pending_company``，这里统一激活并同步
+    ``company_switch`` 的 widget 状态，避免侧边栏旧值把公司又切回去。
+    """
+    pending = st.session_state.pop(PENDING_COMPANY_KEY, None)
+    if not pending:
+        return
+    try:
+        company_api.switch_company(str(pending))
+    except Exception as exc:  # noqa: BLE001 - 切换失败中文提示，不崩溃
+        st.caption(f"切换公司失败：{exc}")
+        return
+    st.session_state["company_switch"] = str(pending)
+
+
+def _render_company_switcher() -> None:
+    """侧边栏公司切换器 + 当前地区 / 城建税税率（多公司，P1-A）。"""
+    _consume_pending_company()
+    companies = company_api.list_companies()
+    active_id = company_api.active_company_id()
+    ids = [str(item.get("id") or "") for item in companies if item.get("id")]
+    labels = {str(item.get("id")): company_api.company_label(item) for item in companies}
+    if not ids:
+        st.caption("🏢 尚未初始化公司，请到「设置 → 企业信息」新建。")
+        return
+    index = ids.index(active_id) if active_id in ids else 0
+    # 统一由 session_state 提供初始值（避免 index 默认值与 session_state 冲突告警）
+    if st.session_state.get("company_switch") not in ids:
+        st.session_state["company_switch"] = ids[index]
+    selected = st.selectbox(
+        "当前公司",
+        ids,
+        format_func=lambda company_id: labels.get(str(company_id), str(company_id)),
+        key="company_switch",
+        disabled=len(ids) <= 1,
+        help="切换公司会切换到该公司独立的账套数据（台账 / 归档 / 备份互不影响）",
+    )
+    if selected and str(selected) != str(active_id):
+        try:
+            company_api.switch_company(str(selected))
+        except Exception as exc:  # noqa: BLE001 - 切换失败不崩溃，中文提示
+            st.error(f"切换公司失败：{exc}")
+        else:
+            st.rerun()
+    region = company_api.region()
+    try:
+        rate = float(region.get("city_maintenance_tax_rate") or 0.07)
+    except (TypeError, ValueError):
+        rate = 0.07
+    st.caption(f"📍 {region.get('label') or '未指定地区'} · 城建税 {rate * 100:.0f}%")
 
 
 def _render_sidebar() -> str:
@@ -53,7 +112,11 @@ def _render_sidebar() -> str:
             label_visibility="collapsed",
         )
         st.divider()
-        company = config.get_company()
+        try:
+            _render_company_switcher()
+        except Exception as exc:  # noqa: BLE001 - 切换器故障不影响整页
+            st.caption(f"公司切换器暂不可用：{exc}")
+        company = company_api.active_company() or config.get_company()
         st.caption(f"🏢 {company.get('short_name') or company.get('name') or '企业'}")
         if config.is_ai_configured():
             st.caption(f"🤖 AI 已配置 · {config.mask_key()}")

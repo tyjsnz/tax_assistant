@@ -10,7 +10,7 @@ import streamlit as st
 
 import config
 import ledger
-from ui.components import archive_api as AA, cache, formatting as F, ledger_api as LA, runtime, theme, ui
+from ui.components import archive_api as AA, cache, company_api, formatting as F, ledger_api as LA, runtime, theme, ui
 
 FLASH_KEY = "_settings_flash"
 PRIVACY_KEY = "settings_privacy_mode"
@@ -196,66 +196,270 @@ def _save_privacy() -> None:
 
 
 # =============================================================================
-# 企业信息
+# 企业信息（多公司管理，P1-A）
 # =============================================================================
-def _render_company_tab() -> None:
-    ui.section("🏢 企业信息", "修改后保存在本地设置中，用于申报表抬头、提醒与 AI 上下文。")
-    company = ui.company_snapshot()
+def _rate_percent(value: Any) -> str:
+    try:
+        return f"{float(value or 0) * 100:.0f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _render_region_caption(company: dict | None = None) -> None:
+    """展示当前地区与附加税费参数（城建税 / 教育费附加 / 六税两费减半）。"""
+    region = company_api.region()
+    try:
+        full = float(region.get("surtax_rate_full") or 0.12)
+        discounted = float(region.get("surtax_rate_discounted") or 0.06)
+    except (TypeError, ValueError):
+        full, discounted = 0.12, 0.06
+    st.caption(
+        f"当前地区：{region.get('label')} · 城建税 {_rate_percent(region.get('city_maintenance_tax_rate'))} · "
+        f"附加税费综合 {full * 100:.0f}%（六税两费减半后 {discounted * 100:.1f}%）"
+    )
+
+
+def _render_current_company_form(company: dict) -> None:
+    """当前公司信息编辑（含地区预设；保存走 workspace.update_company）。"""
+    active_id = str(company.get("id") or company_api.active_company_id())
+    presets = company_api.region_presets()
+    preset_ids = [str(item.get("id")) for item in presets]
+    current_region = str(
+        company.get("region_id")
+        or company_api.infer_region_id(company.get("province"), company.get("city_maintenance_tax_rate"))
+    )
+    index = preset_ids.index(current_region) if current_region in preset_ids else 0
+    _render_region_caption(company)
     with st.form("settings_company_form"):
         cols = st.columns(2)
         with cols[0]:
-            name = st.text_input("企业名称", value=str(company.get("name") or ""), key="settings_company_name")
+            name = st.text_input("企业名称 *", value=str(company.get("name") or ""), key="settings_company_name")
             short_name = st.text_input("简称", value=str(company.get("short_name") or ""), key="settings_company_short")
-            taxpayer_type = st.text_input(
-                "纳税人类型", value=str(company.get("taxpayer_type") or "小规模纳税人"), key="settings_company_type"
-            )
-            industry = st.text_input("所属行业", value=str(company.get("industry") or ""), key="settings_company_industry")
             credit_code = st.text_input(
                 "统一社会信用代码",
                 value=str(company.get("unified_social_credit_code") or ""),
                 key="settings_company_credit",
             )
-        with cols[1]:
             tax_authority = st.text_input(
                 "主管税务机关", value=str(company.get("tax_authority") or ""), key="settings_company_authority"
             )
+            industry = st.text_input("所属行业", value=str(company.get("industry") or ""), key="settings_company_industry")
+        with cols[1]:
+            province = st.text_input("省份", value=str(company.get("province") or ""), key="settings_company_province")
             city = st.text_input("城市", value=str(company.get("city") or ""), key="settings_company_city")
             county = st.text_input("区县", value=str(company.get("county") or ""), key="settings_company_county")
-            stamp_rate = st.number_input(
-                "城建税税率（市区 7% / 县城 5%）",
-                min_value=0.01,
-                max_value=0.07,
-                value=float(company.get("city_maintenance_tax_rate") or 0.07),
-                step=0.01,
-                format="%.2f",
-                key="settings_company_stamp_rate",
+            region_id = st.selectbox(
+                "地区预设（决定城建税税率）",
+                preset_ids,
+                index=index,
+                format_func=lambda preset_id: company_api.region_label(company_api.preset_by_id(preset_id)),
+                key="settings_company_region",
+                help="市区 7%、县城/镇 5%、其他 1%；附加税费 = 增值税 ×（城建税 + 3% + 2%）× 六税两费减半",
             )
             accounting_standard = st.text_input(
-                "会计准则", value=str(company.get("accounting_standard") or "小企业会计准则"),
+                "会计准则",
+                value=str(company.get("accounting_standard") or "小企业会计准则"),
                 key="settings_company_accounting",
             )
-        submitted = st.form_submit_button("保存企业信息", type="primary", width="content")
-    if submitted:
-        patch = {
-            "name": name,
-            "short_name": short_name,
-            "taxpayer_type": taxpayer_type,
-            "industry": industry,
-            "unified_social_credit_code": credit_code,
-            "tax_authority": tax_authority,
-            "city": city,
-            "county": county,
-            "city_maintenance_tax_rate": float(stamp_rate),
-            "accounting_standard": accounting_standard,
-        }
-        try:
-            config.save_user_settings({"company": patch})
-        except Exception as exc:  # noqa: BLE001
-            _flash(f"保存企业信息失败：{exc}", "error")
-        else:
-            _flash("企业信息已保存。")
-            st.rerun()
-    st.caption(f"配置目录：{config.DATA_DIR} · 设置文件：{Path(config.SETTINGS_FILE).name}")
+            note = st.text_input("备注", value=str(company.get("note") or ""), key="settings_company_note")
+        submitted = st.form_submit_button("保存当前公司信息", type="primary", width="content")
+    if not submitted:
+        return
+    if not name.strip():
+        st.error("企业名称不能为空。")
+        return
+    patch = {
+        "name": name.strip(),
+        "short_name": short_name.strip(),
+        "unified_social_credit_code": credit_code.strip(),
+        "tax_authority": tax_authority.strip(),
+        "industry": industry.strip(),
+        "province": province.strip(),
+        "city": city.strip(),
+        "county": county.strip(),
+        "region_id": region_id,
+        "accounting_standard": accounting_standard.strip(),
+        "note": note.strip(),
+    }
+    try:
+        record = company_api.update_company(active_id, patch)
+    except Exception as exc:  # noqa: BLE001 - 后端 ValueError 中文提示
+        st.error(f"保存企业信息失败：{exc}")
+        return
+    cache.clear()
+    _flash(f"企业信息已保存（{record.get('name') or name}），当前地区：{company_api.region_text(record)}")
+    st.rerun()
+
+
+def _render_company_list(companies: list[dict], active_id: str) -> None:
+    """公司列表：表格概览 + 每行切换 / 删除（删除需确认，后端会拒绝删当前 / 唯一公司）。"""
+    st.markdown("**公司列表**")
+    if not companies:
+        st.info("尚未创建公司，请在下方「新建公司」。", icon="🏢")
+        return
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "编号": item.get("id"),
+                    "名称": item.get("name"),
+                    "地区": company_api.region_text(item),
+                    "是否当前": "✅ 当前" if str(item.get("id")) == str(active_id) else "",
+                    "已有数据": "有" if item.get("has_data") else "空",
+                    "账套目录": item.get("data_dir") or "—",
+                }
+                for item in companies
+            ]
+        ),
+        hide_index=True,
+        width="stretch",
+    )
+    for item in companies:
+        company_id = str(item.get("id"))
+        with st.container(border=True):
+            info, switch_col, delete_col = st.columns([5, 1, 1])
+            with info:
+                st.markdown(f"**{item.get('name') or company_id}**（{company_id}）")
+                st.caption(
+                    f"地区：{company_api.region_text(item)}"
+                    f" · 数据：{'已有台账' if item.get('has_data') else '空账套'}"
+                    f" · 目录：{item.get('data_dir') or '—'}"
+                )
+            with switch_col:
+                if st.button(
+                    "切换",
+                    key=f"settings_company_switch_{company_id}",
+                    width="stretch",
+                    disabled=str(item.get("id")) == str(active_id),
+                ):
+                    st.session_state["_pending_company"] = company_id
+                    _flash(f"正在切换到 {item.get('name') or company_id}…")
+                    st.rerun()
+            with delete_col:
+                confirm = st.checkbox(
+                    "确认删除",
+                    key=f"settings_company_delete_confirm_{company_id}",
+                    help="删除为软删除（目录移到 companies/_deleted）；当前 / 唯一公司会被后端拒绝",
+                )
+                if st.button(
+                    "删除",
+                    key=f"settings_company_delete_{company_id}",
+                    width="stretch",
+                    disabled=not confirm,
+                ):
+                    try:
+                        company_api.delete_company(company_id)
+                    except Exception as exc:  # noqa: BLE001 - 展示后端中文 ValueError
+                        st.error(str(exc))
+                    else:
+                        _flash(f"已删除公司 {item.get('name') or company_id}（软删除）", "warning")
+                        st.rerun()
+
+
+def _render_new_company_form() -> None:
+    """新建公司表单（可选立即切换）。"""
+    st.markdown("**新建公司**")
+    presets = company_api.region_presets()
+    preset_ids = [str(item.get("id")) for item in presets]
+    with st.form("settings_new_company_form", clear_on_submit=True):
+        cols = st.columns(3)
+        with cols[0]:
+            name = st.text_input("公司名称 *", key="settings_new_company_name", placeholder="如：某某科技有限公司")
+            short_name = st.text_input("简称", key="settings_new_company_short")
+            industry = st.text_input("所属行业", key="settings_new_company_industry")
+        with cols[1]:
+            credit_code = st.text_input("统一社会信用代码", key="settings_new_company_credit")
+            region_id = st.selectbox(
+                "地区预设",
+                preset_ids,
+                index=0,
+                format_func=lambda preset_id: company_api.region_label(company_api.preset_by_id(preset_id)),
+                key="settings_new_company_region",
+            )
+            note = st.text_input("备注", key="settings_new_company_note")
+        with cols[2]:
+            activate_new = st.checkbox("创建后立即切换", value=False, key="settings_new_company_activate")
+            st.caption("新公司拥有独立账套目录；创建后可在侧边栏切换。")
+        submitted = st.form_submit_button("新建公司", type="primary", width="content")
+    if not submitted:
+        return
+    if not name.strip():
+        st.error("公司名称不能为空。")
+        return
+    payload = {
+        "name": name.strip(),
+        "short_name": short_name.strip(),
+        "unified_social_credit_code": credit_code.strip(),
+        "industry": industry.strip(),
+        "region_id": region_id,
+        "note": note.strip(),
+    }
+    try:
+        record = company_api.add_company(payload, activate_new=bool(activate_new))
+    except Exception as exc:  # noqa: BLE001 - 后端 ValueError 中文提示
+        st.error(f"新建公司失败：{exc}")
+        return
+    cache.clear()
+    if activate_new:
+        st.session_state["_pending_company"] = str(record.get("id") or "")
+    _flash(
+        f"已新建公司「{record.get('name') or name}」（{record.get('id')}）"
+        + ("，并已切换到新公司" if activate_new else "")
+    )
+    st.rerun()
+
+
+def _render_workspace_info() -> None:
+    """工作区信息：数据根目录 / schema 版本 / 当前公司数据目录 / 日志目录。"""
+    st.markdown("**工作区信息**")
+    summary = company_api.workspace_summary()
+    companies = summary.get("companies") or []
+    rows = [
+        {"项目": "数据根目录", "值": str(summary.get("data_root") or company_api.data_root())},
+        {"项目": "Schema 版本", "值": str(summary.get("schema_version") or "—")},
+        {"项目": "当前公司", "值": str(summary.get("active_company_id") or company_api.active_company_id())},
+        {"项目": "当前公司数据目录", "值": str(summary.get("active_data_dir") or company_api.current_data_dir())},
+        {"项目": "当前公司备份目录", "值": str(company_api.current_backup_dir())},
+        {"项目": "当前公司上传目录", "值": str(company_api.current_upload_dir())},
+        {"项目": "日志目录（全局）", "值": str(summary.get("logs_dir") or config.LOGS_DIR)},
+        {"项目": "公司数量", "值": str(len(companies))},
+    ]
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    st.caption(
+        f"全局设置文件：{Path(config.SETTINGS_FILE).name}（API Key / 模型不随公司切换） · "
+        "切换公司只影响台账、归档、备份与上传目录。"
+    )
+
+
+def _render_company_tab() -> None:
+    """企业信息 tab：当前公司编辑 + 公司列表 + 新建公司 + 工作区信息。"""
+    ui.section(
+        "🏢 企业信息（多公司）",
+        "每家公司拥有独立账套（台账 / 归档 / 备份）；地区预设决定城建税税率并影响附加税费计算。",
+    )
+    if not company_api.workspace_ready():
+        ui.module_missing("多公司管理", "workspace", detail=company_api.missing_detail())
+    try:
+        companies = company_api.list_companies()
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"读取公司列表失败：{exc}")
+        companies = []
+    active_id = company_api.active_company_id()
+    active = next((item for item in companies if str(item.get("id")) == str(active_id)), None) or (
+        companies[0] if companies else company_api.active_company()
+    )
+
+    st.markdown("**当前公司信息**")
+    _render_current_company_form(active)
+
+    st.markdown("---")
+    _render_company_list(companies, active_id)
+
+    st.markdown("---")
+    _render_new_company_form()
+
+    st.markdown("---")
+    _render_workspace_info()
 
 
 # =============================================================================

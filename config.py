@@ -21,20 +21,35 @@ from typing import Any
 # =============================================================================
 # 项目路径
 # =============================================================================
+# 多公司（多账套）目录约定：
+#   DATA_ROOT/companies.json          公司注册表（当前激活公司）
+#   DATA_ROOT/companies/{id}/         每家公司独立的台账 CSV、archive/、backups/、uploads/
+#   DATA_ROOT/user_settings.json      全局设置（API Key、模型等，不随公司切换）
+#   DATA_ROOT/schema.json             数据 schema 版本（用于升级迁移）
+#   LOGS_DIR                          全局审计日志（不随公司切换，便于统一追溯）
+#
+# workspace.activate(company_id) 会切换 DATA_DIR/BACKUP_DIR/UPLOAD_DIR；
+# 其余模块在运行时读取这些模块级变量，因此切换后无需重新 import。
 BASE_DIR = Path(__file__).resolve().parent
 
-DATA_DIR = Path(os.environ.get("TAX_DATA_DIR") or (BASE_DIR / "data"))
-BACKUP_DIR = DATA_DIR / "backups"
-UPLOAD_DIR = DATA_DIR / "uploads"
+#: 数据根目录（测试可用 TAX_DATA_DIR 指向临时目录实现隔离）
+DATA_ROOT = Path(os.environ.get("TAX_DATA_DIR") or (BASE_DIR / "data"))
+
+#: 当前激活公司的数据目录（未启用多公司前默认等于 DATA_ROOT，由 workspace 切换）
+DATA_DIR = DATA_ROOT
+BACKUP_DIR = DATA_ROOT / "backups"
+UPLOAD_DIR = DATA_ROOT / "uploads"
 EXPORT_DIR = Path(os.environ.get("TAX_EXPORT_DIR") or (BASE_DIR / "exports"))
-LOGS_DIR = Path(os.environ.get("TAX_LOG_DIR") or (BASE_DIR / "logs"))
+LOGS_DIR = Path(os.environ.get("TAX_LOG_DIR") or (DATA_ROOT / "logs"))
 POLICY_DIR = BASE_DIR / "knowledge" / "policy_files"
-SETTINGS_FILE = DATA_DIR / "user_settings.json"
+SETTINGS_FILE = DATA_ROOT / "user_settings.json"
+COMPANIES_FILE = DATA_ROOT / "companies.json"
+SCHEMA_FILE = DATA_ROOT / "schema.json"
 ENV_FILE = BASE_DIR / ".env"
 
 APP_NAME = "税小智 · 小规模纳税人自主税务填报系统"
 APP_SHORT_NAME = "税小智"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 
 DISCLAIMER = "⚠️ 仅供参考，以主管税务机关核定为准"
 
@@ -42,6 +57,7 @@ DISCLAIMER = "⚠️ 仅供参考，以主管税务机关核定为准"
 # 企业信息（可在「设置」页面覆盖，覆盖值保存在 data/user_settings.json）
 # =============================================================================
 COMPANY: dict[str, Any] = {
+    "id": "main",
     "name": "禄劝云睿网络科技开发有限公司",
     "short_name": "云睿科技",
     "taxpayer_type": "小规模纳税人",
@@ -51,10 +67,68 @@ COMPANY: dict[str, Any] = {
     "province": "云南省",
     "city": "昆明市",
     "county": "禄劝彝族苗族自治县",
+    "region_id": "yunnan-kunming-urban",
     "city_maintenance_tax_rate": 0.07,  # 市区 7%，县城/镇 5%，其他 1%
     "accounting_standard": "小企业会计准则",
     "vat_levy_method": "按季申报",
+    "note": "",
 }
+
+#: 城建税地区预设（城建税税率：市区 7%、县城/镇 5%、其他 1%；教育费附加 3%、地方教育附加 2% 全国统一）
+REGION_PRESETS: list[dict[str, Any]] = [
+    {
+        "id": "yunnan-kunming-urban",
+        "label": "云南省 · 昆明市（市区）",
+        "province": "云南省",
+        "city": "昆明市",
+        "county": "",
+        "city_maintenance_tax_rate": 0.07,
+    },
+    {
+        "id": "yunnan-county-town",
+        "label": "云南省 · 县城 / 镇",
+        "province": "云南省",
+        "city": "",
+        "county": "",
+        "city_maintenance_tax_rate": 0.05,
+    },
+    {
+        "id": "yunnan-other",
+        "label": "云南省 · 其他（乡 / 村）",
+        "province": "云南省",
+        "city": "",
+        "county": "",
+        "city_maintenance_tax_rate": 0.01,
+    },
+    {
+        "id": "generic-urban",
+        "label": "通用 · 市区",
+        "province": "",
+        "city": "",
+        "county": "",
+        "city_maintenance_tax_rate": 0.07,
+    },
+    {
+        "id": "generic-county-town",
+        "label": "通用 · 县城 / 镇",
+        "province": "",
+        "city": "",
+        "county": "",
+        "city_maintenance_tax_rate": 0.05,
+    },
+    {
+        "id": "generic-other",
+        "label": "通用 · 其他",
+        "province": "",
+        "city": "",
+        "county": "",
+        "city_maintenance_tax_rate": 0.01,
+    },
+]
+
+#: 附加税费中教育费附加 / 地方教育附加税率（全国统一）
+EDUCATION_SURTAX_RATE = 0.03
+LOCAL_EDUCATION_SURTAX_RATE = 0.02
 
 # =============================================================================
 # 政策参数（基础参数；**按期间的适用版本与政策依据**见 engine/policy_params.py）
@@ -207,8 +281,8 @@ _dotenv_loaded = False
 # 目录
 # =============================================================================
 def ensure_dirs() -> None:
-    """确保数据、备份、上传、导出、日志目录存在。"""
-    for path in (DATA_DIR, BACKUP_DIR, UPLOAD_DIR, EXPORT_DIR, LOGS_DIR, POLICY_DIR):
+    """确保数据根目录、当前公司数据目录、备份、上传、导出、日志目录存在。"""
+    for path in (DATA_ROOT, DATA_ROOT / "companies", DATA_DIR, BACKUP_DIR, UPLOAD_DIR, EXPORT_DIR, LOGS_DIR, POLICY_DIR):
         try:
             path.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -347,10 +421,46 @@ def get_llm_config() -> dict[str, Any]:
 
 
 def get_company() -> dict[str, Any]:
-    """企业信息（默认值 + 用户覆盖）。"""
+    """当前激活公司的企业信息（多公司时由 workspace 提供，未启用时回退默认值）。"""
     company = dict(COMPANY)
-    company.update(load_user_settings().get("company") or {})
+    try:
+        from workspace import active_company
+
+        company.update(active_company())
+    except Exception:  # noqa: BLE001 - 工作区尚未初始化或循环导入时回退默认企业
+        company.update(load_user_settings().get("company") or {})
     return company
+
+
+def get_region() -> dict[str, Any]:
+    """当前公司的地区参数（城建税税率、省市区县、地区预设标签）。"""
+    company = get_company()
+    rate = company.get("city_maintenance_tax_rate")
+    try:
+        rate = float(rate) if rate is not None else 0.07
+    except (TypeError, ValueError):
+        rate = 0.07
+    if rate not in (0.07, 0.05, 0.01):
+        rate = 0.07
+    preset = next((item for item in REGION_PRESETS if item.get("id") == company.get("region_id")), None)
+    return {
+        "region_id": company.get("region_id") or "",
+        "label": (preset or {}).get("label") or "、".join(
+            part for part in (company.get("province"), company.get("city"), company.get("county")) if part
+        ) or "未指定地区",
+        "province": company.get("province") or "",
+        "city": company.get("city") or "",
+        "county": company.get("county") or "",
+        "city_maintenance_tax_rate": rate,
+        "education_surtax_rate": EDUCATION_SURTAX_RATE,
+        "local_education_surtax_rate": LOCAL_EDUCATION_SURTAX_RATE,
+        "surtax_rate_full": rate + EDUCATION_SURTAX_RATE + LOCAL_EDUCATION_SURTAX_RATE,
+        "surtax_rate_discounted": (rate + EDUCATION_SURTAX_RATE + LOCAL_EDUCATION_SURTAX_RATE) * 0.5,
+    }
+
+
+def get_region_presets() -> list[dict[str, Any]]:
+    return [dict(item) for item in REGION_PRESETS]
 
 
 def get_policy() -> dict[str, Any]:
@@ -381,5 +491,6 @@ def settings_snapshot() -> dict[str, Any]:
         "max_tokens": settings.get("max_tokens"),
         "privacy_mode": bool(settings.get("privacy_mode")),
         "company": get_company(),
+        "region": get_region(),
         "version": APP_VERSION,
     }

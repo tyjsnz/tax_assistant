@@ -9,6 +9,9 @@ Web 界面是主要使用方式（``.venv/bin/streamlit run ui/streamlit_app.py`
     python main.py demo
     python main.py ingest --invoices examples/invoices/*.xml --bank examples/bank/*.csv --confirm-score 90
     python main.py pool
+    python main.py companies
+    python main.py company-add --name "第二公司" --region yunnan-county-town --switch
+    python main.py regions
     python main.py periods
     python main.py close --period 2026-01
     python main.py archive --period 2026Q1
@@ -127,6 +130,107 @@ def cmd_demo(args: argparse.Namespace) -> int:
     if extras:
         print("  " + "；".join(f"{key} = {value:,.2f}" for key, value in extras.items() if isinstance(value, (int, float))))
     print(f"\n提示：启动界面后可在「首页/台账」查看示例数据。{config.DISCLAIMER}")
+    return 0
+
+
+def cmd_companies(args: argparse.Namespace) -> int:
+    """列出全部公司（多账套）及当前激活公司。"""
+    import workspace
+
+    rows = workspace.list_companies()
+    if args.json:
+        _print_json({"active": workspace.active_company_id(), "companies": rows})
+        return 0
+    print("\n🏢 公司（账套）列表")
+    print("-" * 88)
+    print(f"  {'编号':<14}{'公司名称':<26}{'地区':<16}{'状态':<8}{'数据目录'}")
+    for row in rows:
+        marker = "★ 当前" if row.get("is_active") else "—"
+        if row.get("is_active"):
+            region_label = config.get_region().get("label", "")
+        else:
+            preset = next((item for item in config.get_region_presets() if item.get("id") == row.get("region_id")), None)
+            region_label = (preset or {}).get("label") or str(row.get("region_id") or "")
+        print(
+            f"  {str(row.get('id')):<14}{str(row.get('name'))[:24]:<26}{str(region_label)[:14]:<16}"
+            f"{marker:<8}{row.get('data_dir')}"
+        )
+    print("-" * 88)
+    print(f"  数据根目录：{config.DATA_ROOT} · schema v{workspace.schema_version()}")
+    return 0
+
+
+def cmd_company_add(args: argparse.Namespace) -> int:
+    """新建公司账套（可用 --switch 立即切换）。"""
+    import workspace
+
+    payload: dict[str, object] = {"name": args.name}
+    if args.short_name:
+        payload["short_name"] = args.short_name
+    if args.credit_code:
+        payload["unified_social_credit_code"] = args.credit_code
+    if args.region:
+        payload["region_id"] = args.region
+    if args.industry:
+        payload["industry"] = args.industry
+    record = workspace.add_company(payload, activate_new=args.switch)
+    print(f"\n🏢 已创建公司：{record['name']}（编号 {record['id']}）")
+    print(f"  数据目录：{workspace.company_dir(str(record['id']))}")
+    print(f"  地区：{workspace.active_company().get('region_id') if args.switch else record.get('region_id')}")
+    if args.switch:
+        print("  已切换为当前公司。")
+    return 0
+
+
+def cmd_company_switch(args: argparse.Namespace) -> int:
+    """切换当前公司。"""
+    import workspace
+
+    record = workspace.activate(args.id)
+    print(f"\n✅ 已切换公司：{record.get('name')}（{record.get('id')}）")
+    print(f"  数据目录：{config.DATA_DIR}")
+    return 0
+
+
+def cmd_company_update(args: argparse.Namespace) -> int:
+    """更新公司信息 / 地区。"""
+    import workspace
+
+    patch: dict[str, object] = {}
+    for key, value in (("name", args.name), ("short_name", args.short_name), ("region_id", args.region)):
+        if value:
+            patch[key] = value
+    if not patch:
+        print("请至少提供 --name / --short-name / --region 之一。")
+        return 1
+    record = workspace.update_company(args.id, patch)
+    print(f"\n✅ 已更新公司：{record.get('name')}（{record.get('id')}）")
+    print(f"  地区：{record.get('region_id')} · 城建税 {float(record.get('city_maintenance_tax_rate') or 0) * 100:.0f}%")
+    return 0
+
+
+def cmd_company_delete(args: argparse.Namespace) -> int:
+    """删除公司（默认软删除，移动到 companies/_deleted/）。"""
+    import workspace
+
+    if not args.yes and not _confirm(f"确认删除公司 {args.id}？"):
+        print("  已取消（非交互环境请加 --yes）。")
+        return 1
+    result = workspace.delete_company(args.id, hard=args.hard)
+    print(f"\n🗑️ 公司 {result['id']} 已删除（{result['action']}）：{result['company_dir']}")
+    return 0
+
+
+def cmd_regions(args: argparse.Namespace) -> int:
+    """列出城建税地区预设。"""
+    config.ensure_dirs()
+    current = config.get_company().get("region_id")
+    print("\n🗺️ 地区预设（城建税税率）")
+    print("-" * 66)
+    for item in config.get_region_presets():
+        mark = "★" if item["id"] == current else " "
+        print(f"  {mark} {item['id']:<24}{item['label']:<24}{item['city_maintenance_tax_rate'] * 100:.0f}%")
+    print("-" * 66)
     return 0
 
 
@@ -428,6 +532,39 @@ def build_parser() -> argparse.ArgumentParser:
     p_pool.add_argument("--json", action="store_true", help="输出 JSON")
     p_pool.set_defaults(func=cmd_pool)
 
+    p_companies = sub.add_parser("companies", help="列出公司（账套）")
+    p_companies.add_argument("--json", action="store_true")
+    p_companies.set_defaults(func=cmd_companies)
+
+    p_company_add = sub.add_parser("company-add", help="新建公司账套")
+    p_company_add.add_argument("--name", required=True)
+    p_company_add.add_argument("--short-name", default="")
+    p_company_add.add_argument("--credit-code", default="")
+    p_company_add.add_argument("--region", default="", help="地区预设 ID，如 yunnan-county-town")
+    p_company_add.add_argument("--industry", default="")
+    p_company_add.add_argument("--switch", action="store_true", help="创建后立即切换")
+    p_company_add.set_defaults(func=cmd_company_add)
+
+    p_company_switch = sub.add_parser("company-switch", help="切换当前公司")
+    p_company_switch.add_argument("--id", required=True)
+    p_company_switch.set_defaults(func=cmd_company_switch)
+
+    p_company_update = sub.add_parser("company-update", help="更新公司信息/地区")
+    p_company_update.add_argument("--id", required=True)
+    p_company_update.add_argument("--name", default="")
+    p_company_update.add_argument("--short-name", default="")
+    p_company_update.add_argument("--region", default="")
+    p_company_update.set_defaults(func=cmd_company_update)
+
+    p_company_delete = sub.add_parser("company-delete", help="删除公司（默认软删除）")
+    p_company_delete.add_argument("--id", required=True)
+    p_company_delete.add_argument("--hard", action="store_true", help="彻底删除数据目录（不可恢复）")
+    p_company_delete.add_argument("--yes", action="store_true", help="跳过交互确认")
+    p_company_delete.set_defaults(func=cmd_company_delete)
+
+    p_regions = sub.add_parser("regions", help="列出地区预设（城建税税率）")
+    p_regions.set_defaults(func=cmd_regions)
+
     p_periods = sub.add_parser("periods", help="查看会计期间结账状态")
     p_periods.add_argument("--limit", type=int, default=12)
     p_periods.add_argument("--json", action="store_true")
@@ -475,6 +612,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     config.ensure_dirs()
     try:
+        import workspace
+
+        workspace.ensure_default()
         from ledger import init_storage
 
         init_storage()
