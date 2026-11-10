@@ -36,3 +36,8 @@ data/companies.json
 data/schema.json
 data/*.csv
 data/logs/
+
+# 官网下载包与本地构建产物
+dist/
+site/download/*.zip
+site/download/*.tar.gz

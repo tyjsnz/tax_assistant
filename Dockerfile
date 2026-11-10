@@ -12,7 +12,9 @@ WORKDIR /app
 
 # 运行依赖（OCR 的 macOS Vision 仅本机可用；容器内可导入 XML/OFD、或手动粘贴文本）
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# 国内服务器可用镜像源构建：docker build --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple .
+ARG PIP_INDEX_URL=https://pypi.org/simple
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements.txt
 
 COPY . .
 

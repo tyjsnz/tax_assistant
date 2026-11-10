@@ -83,3 +83,21 @@ main.py restore --file data/backups/backup_xxx.zip --yes
 | 报表 PDF 中文乱码 | PDF 使用 reportlab 内置 STSong-Light；如自定义字体请检查 |
 | 升级后数据看不到 | 检查当前公司（侧边栏）与 `data/companies.json`，必要时 `main.py companies` |
 | 备份恢复后索引变化 | 恢复会还原全部 CSV（含 archives/backups 索引），安全备份文件仍在磁盘 |
+
+## 9. 参考部署：阿里云 + 宝塔 + Docker + Nginx + Let's Encrypt（tax.flacn.net）
+
+本项目官网与在线演示即按此结构部署（CentOS 7.9 + 宝塔 + Docker）：
+
+```text
+/                  → /www/wwwroot/tax/site（静态官网，含下载包）
+/app/              → 反向代理 127.0.0.1:8501（Streamlit，baseUrlPath=/app）
+/download/...      → 安装包下载
+```
+
+* 构建镜像：`docker build -t zhixiaoshui:1.7.0 --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple .`
+* 运行容器：`docker run -d --name tax-agent --restart unless-stopped -p 127.0.0.1:8501:8501 -v /www/wwwroot/tax/data:/app/data -e STREAMLIT_SERVER_BASE_URL_PATH=app zhixiaoshui:1.7.0`
+* 初始化演示数据：`docker exec tax-agent python scripts/seed_demo.py --reset`
+* Nginx：`/app/` 需转发 `Upgrade`/`Connection` 头，`proxy_read_timeout 86400`；`/app/_stcore/health` 作健康检查；
+* SSL：Docker certbot webroot 申请，证书在 `/etc/letsencrypt/live/<域名>/`；
+  `/etc/cron.d/certbot-tax` 每日 03:00 `certbot renew` + `nginx -s reload` 实现到期自动续签；
+* 公共演示数据：`/etc/cron.d/tax-demo-reset` 每日 04:30 `seed_demo.py --reset` 并重启容器。

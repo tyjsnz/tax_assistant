@@ -24,7 +24,7 @@ import config  # noqa: E402
 import workspace  # noqa: E402
 
 DEMO_ID = "demo"
-DEMO_NAME = "示例科技有限公司"
+DEMO_NAME = "某科技有限公司"
 
 
 def _ensure_demo_company(reset: bool) -> dict:
@@ -42,11 +42,11 @@ def _ensure_demo_company(reset: bool) -> dict:
     record = workspace.add_company(
         {
             "name": DEMO_NAME,
-            "short_name": "示例科技",
+            "short_name": "某科技",
             "taxpayer_type": "小规模纳税人",
             "industry": "网络科技（技术服务、软件开发）",
-            "unified_social_credit_code": "91530000DEMO00001X",
-            "tax_authority": "国家税务总局昆明市税务局",
+            "unified_social_credit_code": "91530000MA0000000X",
+            "tax_authority": "国家税务总局某市税务局",
             "province": "云南省",
             "city": "昆明市",
             "region_id": "yunnan-kunming-urban",
@@ -71,17 +71,17 @@ def _seed_ledgers() -> dict:
     from ledger import expense_ledger, income_ledger, rd_auxiliary, reports
 
     incomes = [
-        ("2026-01-12", "云图科技有限公司", 61800, "普票", "技术服务", "技术服务费"),
-        ("2026-02-15", "滇南数据科技有限公司", 51500, "普票", "软件开发", "软件开发费"),
-        ("2026-03-10", "昆明智联信息技术有限公司", 87000, "未开票", "运维服务", "运维服务费"),
-        ("2026-04-09", "云图科技有限公司", 82400, "普票", "技术服务", "技术服务费"),
-        ("2026-05-18", "昆明智联信息技术有限公司", 101000, "专票", "软件开发", "软件定制开发"),
-        ("2026-06-20", "滇南数据科技有限公司", 96000, "普票", "技术服务", "数据服务费"),
-        ("2026-07-08", "云图科技有限公司", 92700, "普票", "技术服务", "技术服务费"),
-        ("2026-08-14", "昆明智联信息技术有限公司", 76000, "未开票", "运维服务", "系统运维"),
-        ("2026-09-22", "滇南数据科技有限公司", 84000, "普票", "软件开发", "软件开发费"),
-        ("2026-10-16", "云图科技有限公司", 68000, "普票", "技术服务", "技术服务费"),
-        ("2026-11-06", "昆明智联信息技术有限公司", 55000, "普票", "运维服务", "运维服务费"),
+        ("2026-01-12", "某客户A", 61800, "普票", "技术服务", "技术服务费"),
+        ("2026-02-15", "某客户B", 51500, "普票", "软件开发", "软件开发费"),
+        ("2026-03-10", "某客户C", 87000, "未开票", "运维服务", "运维服务费"),
+        ("2026-04-09", "某客户A", 82400, "普票", "技术服务", "技术服务费"),
+        ("2026-05-18", "某客户C", 101000, "专票", "软件开发", "软件定制开发"),
+        ("2026-06-20", "某客户B", 96000, "普票", "技术服务", "数据服务费"),
+        ("2026-07-08", "某客户A", 92700, "普票", "技术服务", "技术服务费"),
+        ("2026-08-14", "某客户C", 76000, "未开票", "运维服务", "系统运维"),
+        ("2026-09-22", "某客户B", 84000, "普票", "软件开发", "软件开发费"),
+        ("2026-10-16", "某客户A", 68000, "普票", "技术服务", "技术服务费"),
+        ("2026-11-06", "某客户C", 55000, "普票", "运维服务", "运维服务费"),
     ]
     for date, client, amount, invoice_type, category, desc in incomes:
         income_ledger.add_income(
@@ -102,7 +102,7 @@ def _seed_ledgers() -> dict:
         for category, desc, amount, rd_related in expenses:
             expense_ledger.add_expense(
                 f"2026-{month:02d}-05", f"{desc}（{month} 月）", amount, category=category,
-                is_rd_related=rd_related, vendor="演示供应商", note="演示数据",
+                is_rd_related=rd_related, vendor="某供应商", note="演示数据",
             )
     rd_auxiliary.add_rd_record(
         "智慧税务助手", "2026Q1", personnel_cost=40000, material_cost=6000, depreciation=2000, other_cost=3000,
@@ -113,10 +113,10 @@ def _seed_ledgers() -> dict:
         note="演示研发项目",
     )
     contracts = [
-        ("2026-01-08", "YSDEMO-001", "云图科技有限公司", "技术合同", 61800),
-        ("2026-05-06", "YSDEMO-002", "昆明智联信息技术有限公司", "技术合同", 101000),
-        ("2026-07-02", "YSDEMO-003", "滇南数据科技有限公司", "技术合同", 120000),
-        ("2026-09-01", "YSDEMO-004", "演示办公设备商", "买卖合同", 18000),
+        ("2026-01-08", "YSDEMO-001", "某客户A", "技术合同", 61800),
+        ("2026-05-06", "YSDEMO-002", "某客户C", "技术合同", 101000),
+        ("2026-07-02", "YSDEMO-003", "某客户B", "技术合同", 120000),
+        ("2026-09-01", "YSDEMO-004", "某供应商", "买卖合同", 18000),
     ]
     from ledger import reports
 
@@ -261,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"   票据：发票 {ingest['invoices']} 张，流水 {ingest['transactions']} 笔，匹配入账 {ingest['matches']} 笔")
     print(f"   申报：报表记录 {filings['filings']} 张，Q3 归档已生成")
     print(f"   结账：{closing['closed']} 已结账；汇算应纳税所得额 ¥{float(closing['taxable_income'] or 0):,.2f}")
-    print("\n提示：启动界面后侧边栏「当前公司」选择「示例科技」即可体验完整演示数据；")
+    print("\n提示：启动界面后侧边栏「当前公司」选择「某科技」即可体验完整演示数据；")
     print("      演示数据均为虚构，可在「设置 → 企业信息」中删除演示公司。")
     print(config.DISCLAIMER)
     return 0

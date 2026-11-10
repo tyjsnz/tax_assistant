@@ -61,7 +61,7 @@ class TestRegistry:
 
     def test_update_company_and_region(self):
         active = workspace.active_company_id()
-        updated = workspace.update_company(active, {"region_id": "yunnan-county-town", "short_name": "云睿（县城）"})
+        updated = workspace.update_company(active, {"region_id": "yunnan-county-town", "short_name": "某科技（县城）"})
         assert updated["region_id"] == "yunnan-county-town"
         assert updated["city_maintenance_tax_rate"] == pytest.approx(0.05)
         region = config.get_region()

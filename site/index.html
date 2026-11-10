@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>智小税 · 小白也能自己报税了</title>
+<meta name="description" content="智小税：本地优先、开源的小规模纳税人自主税务填报系统。AI 辅助理账、算税、生成申报表——不需要会计基础，数据留在你自己的电脑里。" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2337e6b0'/%3E%3Cstop offset='1' stop-color='%234f8cff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Ctext x='32' y='44' font-size='34' text-anchor='middle' fill='%23071018' font-family='sans-serif' font-weight='800'%3E税%3C/text%3E%3C/svg%3E" />
+<style>
+  :root{
+    --bg:#070b14; --bg2:#0b1220; --card:rgba(255,255,255,.045); --line:rgba(255,255,255,.10);
+    --text:#e8eef8; --muted:#9aa8bd; --mint:#37e6b0; --blue:#5b9dff; --amber:#ffbf5e; --violet:#a78bfa;
+    --grad:linear-gradient(120deg,#37e6b0 0%,#5b9dff 55%,#a78bfa 100%);
+    --radius:20px; --max:1180px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;line-height:1.65;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+  .grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .muted{color:var(--muted)}
+  .tag{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.04);font-size:13px;color:var(--muted)}
+  .tag .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 12px var(--mint)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:14px 26px;border-radius:14px;font-weight:700;font-size:15px;border:1px solid transparent;transition:.25s;cursor:pointer}
+  .btn-primary{background:var(--grad);color:#06131c;box-shadow:0 14px 40px rgba(55,230,176,.25)}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 18px 50px rgba(55,230,176,.35)}
+  .btn-ghost{border-color:var(--line);background:rgba(255,255,255,.03);color:var(--text)}
+  .btn-ghost:hover{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.07)}
+  /* 背景光晕 */
+  .bg-orb{position:fixed;border-radius:50%;filter:blur(90px);opacity:.5;pointer-events:none;z-index:0}
+  .orb-a{width:520px;height:520px;background:rgba(55,230,176,.16);top:-180px;left:-120px}
+  .orb-b{width:620px;height:620px;background:rgba(91,157,255,.14);top:260px;right:-240px}
+  .orb-c{width:460px;height:460px;background:rgba(167,139,250,.12);bottom:-160px;left:20%}
+  /* 导航 */
+  header{position:sticky;top:0;z-index:50;backdrop-filter:blur(18px);background:rgba(7,11,20,.72);border-bottom:1px solid var(--line)}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:70px}
+  .brand{display:flex;align-items:center;gap:11px;font-size:19px;font-weight:800;letter-spacing:.3px}
+  .brand-logo{width:38px;height:38px;border-radius:12px;background:var(--grad);display:grid;place-items:center;color:#06131c;font-weight:900;font-size:18px;box-shadow:0 8px 24px rgba(55,230,176,.3)}
+  .brand small{display:block;font-size:11px;font-weight:500;color:var(--muted);letter-spacing:1px}
+  .nav-links{display:flex;gap:30px;font-size:14px;color:var(--muted)}
+  .nav-links a:hover{color:var(--text)}
+  .nav .btn{padding:10px 20px;font-size:14px;border-radius:11px}
+  .nav-cta{display:flex;align-items:center;gap:16px}
+  /* Hero */
+  .hero{position:relative;z-index:1;padding:84px 0 50px}
+  .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center}
+  .hero h1{font-size:56px;line-height:1.14;margin:22px 0 18px;letter-spacing:-1.5px}
+  .hero h1 .line{display:block}
+  .hero p.lead{font-size:17px;color:var(--muted);max-width:520px;margin:0 0 30px}
+  .hero-actions{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:26px}
+  .trust{display:flex;gap:26px;flex-wrap:wrap;color:var(--muted);font-size:13px}
+  .trust b{color:var(--text);font-size:18px;display:block;font-weight:800}
+  .hero-visual{position:relative}
+  .shot-frame{position:relative;border-radius:22px;overflow:hidden;border:1px solid rgba(255,255,255,.14);background:#0d1524;box-shadow:0 40px 120px rgba(0,0,0,.55),0 0 0 1px rgba(55,230,176,.08)}
+  .shot-frame img{display:block;width:100%;height:auto}
+  .shot-frame:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 60%,rgba(7,11,20,.55));pointer-events:none}
+  .float-chip{position:absolute;display:flex;align-items:center;gap:9px;padding:11px 15px;border-radius:13px;background:rgba(13,21,36,.92);border:1px solid rgba(255,255,255,.16);font-size:12.5px;box-shadow:0 18px 50px rgba(0,0,0,.45);backdrop-filter:blur(8px);animation:float 5s ease-in-out infinite}
+  .float-chip .ic{width:24px;height:24px;border-radius:8px;display:grid;place-items:center;font-size:13px}
+  .chip-1{top:-18px;left:-26px;animation-delay:.2s}
+  .chip-2{bottom:24px;right:-24px;animation-delay:1.2s}
+  .chip-3{top:42%;right:-38px;animation-delay:2.1s}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+  /* 统计条 */
+  .stats{position:relative;z-index:1;margin:26px auto 0;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));border-radius:var(--radius);padding:26px 34px;display:grid;grid-template-columns:repeat(4,1fr);gap:22px}
+  .stat{text-align:center;border-right:1px solid var(--line)}
+  .stat:last-child{border-right:0}
+  .stat b{display:block;font-size:30px;letter-spacing:-.5px}
+  .stat span{font-size:13px;color:var(--muted)}
+  /* 通用区块 */
+  section{position:relative;z-index:1;padding:88px 0}
+  .sec-head{max-width:680px;margin-bottom:44px}
+  .sec-head .tag{margin-bottom:16px}
+  .sec-head h2{font-size:38px;line-height:1.25;margin:0 0 14px;letter-spacing:-.8px}
+  .sec-head p{color:var(--muted);font-size:16px;margin:0}
+  .center{text-align:center;margin-left:auto;margin-right:auto}
+  /* 痛点 */
+  .pain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:28px;transition:.3s;position:relative;overflow:hidden}
+  .card:hover{transform:translateY(-4px);border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.065)}
+  .card .icon{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:22px;margin-bottom:18px;background:rgba(255,255,255,.07);border:1px solid var(--line)}
+  .card h3{margin:0 0 8px;font-size:18px}
+  .card p{margin:0;color:var(--muted);font-size:14.5px}
+  .pain-card:before{content:"";position:absolute;left:0;top:0;width:100%;height:3px;background:linear-gradient(90deg,var(--mint),transparent);opacity:.65}
+  /* 工作流 */
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;counter-reset:step}
+  .flow-item{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px 22px;counter-increment:step}
+  .flow-item:before{content:"0" counter(step);position:absolute;top:16px;right:20px;font-size:44px;font-weight:900;color:rgba(255,255,255,.06);letter-spacing:-2px}
+  .flow-item .ic{width:40px;height:40px;border-radius:12px;background:rgba(55,230,176,.12);display:grid;place-items:center;font-size:19px;margin-bottom:16px;border:1px solid rgba(55,230,176,.22)}
+  .flow-item h3{font-size:16.5px;margin:0 0 7px}
+  .flow-item p{margin:0;color:var(--muted);font-size:13.5px}
+  .flow-arrow{display:none}
+  /* 功能 */
+  .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .feat{display:flex;gap:16px;align-items:flex-start}
+  .feat .fic{flex:0 0 auto;width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:20px;background:linear-gradient(135deg,rgba(55,230,176,.16),rgba(91,157,255,.14));border:1px solid rgba(255,255,255,.12)}
+  .feat h3{font-size:15.5px;margin:0 0 5px}
+  .feat p{font-size:13.5px;color:var(--muted);margin:0}
+  /* AI 演示 */
+  .ai-grid{display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:center}
+  .chat{background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03));border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+  .chat-head{display:flex;align-items:center;gap:10px;padding:15px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
+  .chat-head .dots{display:flex;gap:6px}
+  .chat-head .dots i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.18);display:block}
+  .chat-body{padding:22px;display:flex;flex-direction:column;gap:14px}
+  .msg{max-width:88%;padding:13px 16px;border-radius:15px;font-size:13.8px;line-height:1.7}
+  .msg.user{align-self:flex-end;background:linear-gradient(135deg,#37e6b0,#5b9dff);color:#06131c;font-weight:600;border-bottom-right-radius:4px}
+  .msg.bot{align-self:flex-start;background:rgba(255,255,255,.06);border:1px solid var(--line);border-bottom-left-radius:4px}
+  .msg.bot b{color:var(--mint)}
+  .tool-trace{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+  .tool-trace span{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:7px;padding:3px 8px;background:rgba(0,0,0,.2)}
+  .ai-points{display:grid;gap:14px;margin-top:26px}
+  .ai-point{display:flex;gap:13px;align-items:flex-start;font-size:14px;color:var(--muted)}
+  .ai-point .ok{flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:rgba(55,230,176,.14);color:var(--mint);display:grid;place-items:center;font-size:12px;border:1px solid rgba(55,230,176,.3)}
+  .ai-point b{color:var(--text)}
+  /* 截图 */
+  .gallery-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
+  .g-btn{padding:9px 18px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted);font-size:13.5px;cursor:pointer;transition:.2s}
+  .g-btn.active{background:rgba(55,230,176,.14);border-color:rgba(55,230,176,.35);color:var(--text)}
+  .gallery{position:relative;border-radius:22px;overflow:hidden;border:1px solid rgba(255,255,255,.14);background:#0d1524;box-shadow:0 40px 100px rgba(0,0,0,.5)}
+  .gallery img{display:block;width:100%;height:auto}
+  .gallery .cap{position:absolute;left:0;right:0;bottom:0;padding:18px 24px;font-size:13.5px;color:#d9e4f5;background:linear-gradient(180deg,transparent,rgba(7,11,20,.92))}
+  /* 下载 */
+  .download-card{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;padding:44px;border-radius:26px;border:1px solid rgba(55,230,176,.22);background:linear-gradient(135deg,rgba(55,230,176,.09),rgba(91,157,255,.07) 55%,rgba(167,139,250,.06));box-shadow:0 30px 90px rgba(0,0,0,.4)}
+  .download-card h2{font-size:34px;margin:0 0 12px;letter-spacing:-.5px}
+  .download-card p{color:var(--muted);margin:0 0 24px;font-size:15px}
+  .os-pills{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+  .os-pill{padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.16);font-size:13px;color:var(--muted)}
+  .dl-meta{font-size:12.5px;color:var(--muted);word-break:break-all}
+  .dl-meta code{color:#bcd3f0}
+  .steps-box{background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:16px;padding:18px 20px;position:relative}
+  .steps-box h4{margin:0 0 12px;font-size:13px;color:var(--muted);letter-spacing:.6px}
+  .code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-size:12.6px;color:#cfe3ff;line-height:1.9;white-space:pre-wrap;word-break:break-all}
+  .copy-btn{position:absolute;top:14px;right:14px;padding:6px 12px;font-size:12px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--muted);cursor:pointer}
+  .copy-btn:hover{color:var(--text)}
+  .hash{font-family:ui-monospace,monospace;font-size:11px;color:#8ea6c6;word-break:break-all}
+  /* 在线体验 */
+  .demo-band{display:flex;align-items:center;justify-content:space-between;gap:28px;padding:34px 40px;border-radius:22px;border:1px solid var(--line);background:linear-gradient(120deg,rgba(91,157,255,.14),rgba(55,230,176,.08),rgba(167,139,250,.1))}
+  .demo-band h3{margin:0 0 6px;font-size:23px}
+  .demo-band p{margin:0;color:var(--muted);font-size:14px}
+  /* FAQ */
+  .faq{display:grid;gap:12px;max-width:900px}
+  details{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:0 20px;transition:.2s}
+  details[open]{border-color:rgba(55,230,176,.25);background:rgba(55,230,176,.05)}
+  summary{cursor:pointer;padding:17px 0;font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;gap:16px}
+  summary::-webkit-details-marker{display:none}
+  summary:after{content:"+";color:var(--mint);font-size:20px;line-height:1}
+  details[open] summary:after{content:"−"}
+  details p{margin:0 0 18px;color:var(--muted);font-size:14px}
+  /* footer */
+  footer{position:relative;z-index:1;border-top:1px solid var(--line);padding:44px 0 34px;margin-top:40px;color:var(--muted);font-size:13px}
+  .foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:36px;margin-bottom:28px}
+  .foot-grid h4{color:var(--text);font-size:14px;margin:0 0 12px}
+  .foot-grid a{display:block;margin:7px 0;color:var(--muted)}
+  .foot-grid a:hover{color:var(--text)}
+  .foot-bottom{border-top:1px solid var(--line);padding-top:20px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;font-size:12px;line-height:1.8}
+  .disclaimer{font-size:12px;color:#8b9ab0;background:rgba(255,191,94,.06);border:1px solid rgba(255,191,94,.18);border-radius:12px;padding:12px 16px;margin-top:18px}
+  /* 动画 */
+  .reveal{transition:opacity .7s ease,transform .7s ease}
+  html.js .reveal{opacity:0;transform:translateY(18px)}
+  html.js .reveal.in{opacity:1;transform:none}
+  .marquee{overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0;background:rgba(255,255,255,.02);position:relative;z-index:1}
+  .marquee-track{display:flex;gap:44px;white-space:nowrap;animation:scroll 28s linear infinite;font-size:13px;color:var(--muted);width:max-content}
+  .marquee-track span{display:inline-flex;align-items:center;gap:9px}
+  .marquee-track i{font-style:normal;color:var(--mint)}
+  @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  @media (max-width:980px){
+    .hero-grid,.ai-grid,.download-card{grid-template-columns:1fr}
+    .hero h1{font-size:42px}
+    .feat-grid,.pain-grid{grid-template-columns:1fr 1fr}
+    .flow{grid-template-columns:1fr 1fr}
+    .stats{grid-template-columns:1fr 1fr}
+    .stat{border-right:0}
+    .nav-links{display:none}
+    .foot-grid{grid-template-columns:1fr}
+  }
+  @media (max-width:620px){
+    .hero{padding-top:54px}
+    .hero h1{font-size:34px}
+    .sec-head h2{font-size:28px}
+    .feat-grid,.pain-grid,.flow{grid-template-columns:1fr}
+    .stats{grid-template-columns:1fr 1fr;padding:20px}
+    .download-card{padding:26px}
+    .demo-band{flex-direction:column;align-items:flex-start}
+    .float-chip{display:none}
+    section{padding:60px 0}
+  }
+</style>
+</head>
+<body>
+<div class="bg-orb orb-a"></div><div class="bg-orb orb-b"></div><div class="bg-orb orb-c"></div>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top">
+      <span class="brand-logo">税</span>
+      <span>智小税<small>ZHIXIAOSHUI · 自主报税助手</small></span>
+    </a>
+    <nav class="nav-links">
+      <a href="#pain">为什么</a><a href="#flow">怎么用</a><a href="#features">功能</a>
+      <a href="#ai">AI 助手</a><a href="#shots">界面</a><a href="#download">下载</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="btn btn-primary" href="#download">免费下载</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="tag"><span class="dot"></span>本地优先 · 开源 · DeepSeek AI 驱动</span>
+        <h1>
+          <span class="line">让报税，</span>
+          <span class="line"><span class="grad-text">像聊天一样简单。</span></span>
+        </h1>
+        <p class="lead">
+          没有会计基础？没关系。智小税把「票据 → 台账 → 算税 → 申报表」串成一条自动流水线，
+          AI 助手一步步带你完成小规模纳税人的季度报税。数据只存在你自己的电脑里。
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#download">⬇ 下载安装包 <span class="muted" style="font-weight:500;font-size:12px">v1.7.0</span></a>
+          <a class="btn btn-ghost" href="/app/" target="_blank" rel="noopener">🚀 在线体验</a>
+        </div>
+        <div class="trust">
+          <div><b>11</b>个功能页面</div>
+          <div><b>700+</b>项离线测试</div>
+          <div><b>0 元</b>云端订阅费</div>
+          <div><b>100%</b>数据本地</div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="shot-frame"><img src="assets/shots/01_dashboard.jpg" alt="智小税首页驾驶舱" /></div>
+        <div class="float-chip chip-1"><span class="ic" style="background:rgba(55,230,176,.16)">🧾</span>票据自动匹配入账</div>
+        <div class="float-chip chip-2"><span class="ic" style="background:rgba(91,157,255,.16)">🤖</span>AI 解释每一步</div>
+        <div class="float-chip chip-3"><span class="ic" style="background:rgba(255,191,94,.16)">📊</span>季度申报自动生成</div>
+      </div>
+    </div>
+    <div class="wrap stats reveal">
+      <div class="stat"><b class="grad-text">11</b><span>个功能页面</span></div>
+      <div class="stat"><b class="grad-text">6</b><span>大模块闭环</span></div>
+      <div class="stat"><b class="grad-text">700+</b><span>离线测试保障</span></div>
+      <div class="stat"><b class="grad-text">5 分钟</b><span>从安装到第一张申报表</span></div>
+    </div>
+  </section>
+
+  <div class="marquee">
+    <div class="marquee-track">
+      <span><i>◆</i>增值税及附加</span><span><i>◆</i>企业所得税预缴</span><span><i>◆</i>个税扣缴</span>
+      <span><i>◆</i>汇算清缴辅助</span><span><i>◆</i>工商年报</span><span><i>◆</i>残保金</span>
+      <span><i>◆</i>票据流水导入</span><span><i>◆</i>自动匹配入账</span><span><i>◆</i>月结季结</span>
+      <span><i>◆</i>申报包归档</span><span><i>◆</i>数据备份</span><span><i>◆</i>政策知识库</span>
+      <span><i>◆</i>增值税及附加</span><span><i>◆</i>企业所得税预缴</span><span><i>◆</i>个税扣缴</span>
+      <span><i>◆</i>汇算清缴辅助</span><span><i>◆</i>工商年报</span><span><i>◆</i>残保金</span>
+      <span><i>◆</i>票据流水导入</span><span><i>◆</i>自动匹配入账</span><span><i>◆</i>月结季结</span>
+      <span><i>◆</i>申报包归档</span><span><i>◆</i>数据备份</span><span><i>◆</i>政策知识库</span>
+    </div>
+  </div>
+
+  <section id="pain">
+    <div class="wrap">
+      <div class="sec-head center reveal">
+        <span class="tag">为什么需要它</span>
+        <h2>报税这件事，<span class="grad-text">不该这么难</span></h2>
+        <p>小规模纳税人业务不复杂，但申报流程、政策变化、票据整理，每一步都足以让新手卡住。</p>
+      </div>
+      <div class="pain-grid">
+        <div class="card pain-card reveal"><div class="icon">💸</div><h3>请会计，一年几千上万</h3><p>业务量不大的小公司，交给代账机构每月几百元，一年下来是一笔不小的固定成本。</p></div>
+        <div class="card pain-card reveal" style="transition-delay:.08s"><div class="icon">📜</div><h3>政策每年在变</h3><p>起征点、征收率、优惠延续、申报表调整……稍不留神就多缴税、漏申报或填错栏次。</p></div>
+        <div class="card pain-card reveal" style="transition-delay:.16s"><div class="icon">🧾</div><h3>票据散落，月底抓狂</h3><p>发票在邮箱、流水在网银、工资在表格里，手工汇总对账，错一笔就要从头查。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="flow">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="tag">四步完成</span>
+        <h2>从一张发票，到一份<span class="grad-text">可提交的申报表</span></h2>
+        <p>不用懂借贷，不用背政策。跟着页面提示走，每一步都有解释和校验。</p>
+      </div>
+      <div class="flow">
+        <div class="flow-item reveal"><div class="ic">📥</div><h3>导入票据与流水</h3><p>上传数电票 XML/OFD/PDF 或银行流水 CSV/Excel，自动去重、解析。</p></div>
+        <div class="flow-item reveal" style="transition-delay:.06s"><div class="ic">🤖</div><h3>AI 帮你理账</h3><p>自动匹配发票与收款，确认即入账；AI 随时解释每一笔该记哪里。</p></div>
+        <div class="flow-item reveal" style="transition-delay:.12s"><div class="ic">🧮</div><h3>一键算清税费</h3><p>增值税及附加、所得税、个税、印花税，确定性引擎精确到分。</p></div>
+        <div class="flow-item reveal" style="transition-delay:.18s"><div class="ic">📋</div><h3>生成申报表并归档</h3><p>逐栏展示来源与口径，校验勾稽关系，导出 Excel 申报包并留档。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="tag">功能全景</span>
+        <h2>一个小公司需要的，<span class="grad-text">这里都有</span></h2>
+        <p>不是简化版记账软件——是围绕「自主完成报税」设计的完整工作台。</p>
+      </div>
+      <div class="feat-grid">
+        <div class="card feat reveal"><div class="fic">🧾</div><div><h3>增值税及附加</h3><p>季度免税判定、专票单独计税、附加税费按地区自动计算。</p></div></div>
+        <div class="card feat reveal"><div class="fic">🏢</div><div><h3>企业所得税</h3><p>季度预缴与年度汇算测算，研发加计扣除、小微优惠自动判定。</p></div></div>
+        <div class="card feat reveal"><div class="fic">👥</div><div><h3>个税扣缴</h3><p>员工档案、月度工资表、累计预扣法、工资凭证、扣缴辅助表。</p></div></div>
+        <div class="card feat reveal"><div class="fic">📊</div><div><h3>汇算清缴辅助</h3><p>年度数据、纳税调整、亏损弥补、A 类申报辅助表与检查清单。</p></div></div>
+        <div class="card feat reveal"><div class="fic">🔁</div><div><h3>票据流水自动匹配</h3><p>方向、金额、日期、对方名称多维评分，确认即生成凭证。</p></div></div>
+        <div class="card feat reveal"><div class="fic">🗂️</div><div><h3>月结 · 归档 · 备份</h3><p>期间锁防止误改，申报包 xlsx+pdf+哈希留档，数据可备份恢复。</p></div></div>
+        <div class="card feat reveal"><div class="fic">📚</div><div><h3>政策知识库</h3><p>政策文号、生效日期、税率表随期间切换，过期自动提醒核验。</p></div></div>
+        <div class="card feat reveal"><div class="fic">🛡️</div><div><h3>本地优先 · 开源</h3><p>数据存本机 CSV，API Key 不入库；源码开源可审计、可二次开发。</p></div></div>
+        <div class="card feat reveal"><div class="fic">📄</div><div><h3>工商年报 / 残保金</h3><p>年度数据准备、残保金分档测算（30 人以下免征）、申报提醒。</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="ai">
+    <div class="wrap ai-grid">
+      <div class="reveal">
+        <span class="tag">AI 助手 · 智小税</span>
+        <h2 style="font-size:38px;line-height:1.25;margin:16px 0 14px;letter-spacing:-.8px">不是客服机器人，<br/>是懂税的<span class="grad-text">随身会计</span></h2>
+        <p style="color:var(--muted);font-size:15.5px;margin:0 0 6px">用大白话问，AI 调用确定性工具算给你看；税额永不由大模型心算。</p>
+        <div class="ai-points">
+          <div class="ai-point"><span class="ok">✓</span><span><b>工具调用，结果可追溯。</b>每个数字都能看到来源：台账、税率表、政策文号。</span></div>
+          <div class="ai-point"><span class="ok">✓</span><span><b>没网也能用。</b>未配置 API Key 时自动切换离线确定性回答，算税记账照常。</span></div>
+          <div class="ai-point"><span class="ok">✓</span><span><b>政策依据随期间更新。</b>2023—2025 与 2026—2027 两套口径自动切换。</span></div>
+        </div>
+      </div>
+      <div class="chat reveal">
+        <div class="chat-head"><span class="dots"><i style="background:#ff6b6b"></i><i style="background:#ffd166"></i><i style="background:#37e6b0"></i></span>智小税 · AI 助手</div>
+        <div class="chat-body">
+          <div class="msg user">这个季度开了 8 万普票，增值税要交多少？</div>
+          <div class="msg bot">
+            本季度销售额 <b>80,000 元（不含税）</b>，未超过小规模纳税人季度 30 万元起征点，且全部为普通发票——<b>增值税免征</b>，附加税费也为 0。<br/>
+            若其中有专票，专票部分仍需按 1% 缴纳。建议申报时在「免税销售额」栏填写 80,000 元。
+            <div class="tool-trace"><span>calc_vat ✓</span><span>政策：2026年第10号</span><span>季度起征点 30 万</span></div>
+          </div>
+          <div class="msg user">那我需要准备哪些资料？</div>
+          <div class="msg bot">申报表、利润表、资产负债表、工资表即可；系统会自动生成申报包并归档。下一步我可以帮你把这些整理好。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="shots">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="tag">界面预览</span>
+        <h2>所见即所得，<span class="grad-text">每一步都有引导</span></h2>
+        <p>界面上展示的公司与客户名称均已脱敏；你看到的，就是下载后可以操作的页面。</p>
+      </div>
+      <div class="gallery-bar reveal">
+        <button class="g-btn active" data-src="assets/shots/01_dashboard.jpg" data-cap="首页驾驶舱：本季度收入、税费、申报倒计时与结账状态一屏掌握">🏠 首页驾驶舱</button>
+        <button class="g-btn" data-src="assets/shots/02_ledger.jpg" data-cap="台账管理：收入 / 费用 / 研发 / 合同四本账，自动换算不含税金额">📒 台账管理</button>
+        <button class="g-btn" data-src="assets/shots/12_ingest_loaded.jpg" data-cap="票据与流水：自动解析去重，匹配建议一键确认入账">📥 票据与流水</button>
+        <button class="g-btn" data-src="assets/shots/04_filing.jpg" data-cap="申报填报：逐栏展示金额、来源与口径，校验勾稽关系后导出 Excel">📋 申报填报</button>
+        <button class="g-btn" data-src="assets/shots/25_p1b_payroll.jpg" data-cap="工资个税：累计预扣法自动算税，确认即生成工资凭证">👥 工资个税</button>
+        <button class="g-btn" data-src="assets/shots/28_p1c_settlement_annual.jpg" data-cap="汇算清缴：年度数据、纳税调整、亏损弥补一目了然">📊 汇算清缴</button>
+      </div>
+      <div class="gallery reveal">
+        <img id="gallery-img" src="assets/shots/01_dashboard.jpg" alt="智小税界面预览" />
+        <div class="cap" id="gallery-cap">首页驾驶舱：本季度收入、税费、申报倒计时与结账状态一屏掌握</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <div class="download-card reveal">
+        <div>
+          <span class="tag"><span class="dot"></span>免费 · 开源 · 无订阅</span>
+          <h2 style="margin-top:16px">下载智小税<br/><span class="grad-text">开始你的第一次自主报税</span></h2>
+          <p>解压即用，无需数据库、无需服务器。首次启动自动创建空白账套，也可一键载入演示数据体验完整流程。</p>
+          <div class="os-pills"><span class="os-pill">🪟 Windows 10/11</span><span class="os-pill">🍎 macOS</span><span class="os-pill">🐧 Linux / Docker</span><span class="os-pill">Python 3.11+</span></div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin:26px 0 18px">
+            <a class="btn btn-primary" href="download/zhixiaoshui-v1.7.0.zip" download>⬇ 下载 v1.7.0（zip · 约 0.9 MB）</a>
+            <a class="btn btn-ghost" href="download/zhixiaoshui-v1.7.0.tar.gz" download>tar.gz</a>
+          </div>
+          <div class="dl-meta">
+            校验（SHA-256）：<span class="hash">3a67e37ec2480b56b1473cc0cb11c66d46e5bc752973a68f899e9ded715e44db</span><br/>
+            许可证 Apache-2.0 · 版本 v1.7.0 · 维护者 snz &lt;274043505@qq.com&gt;
+          </div>
+        </div>
+        <div>
+          <div class="steps-box">
+            <button class="copy-btn" data-copy="unzip zhixiaoshui-v1.7.0.zip -d zhixiaoshui&#10;cd zhixiaoshui&#10;bash start.sh   # Windows 双击 start.bat">复制命令</button>
+            <h4>三步启动 · macOS / Linux</h4>
+            <div class="code">unzip zhixiaoshui-v1.7.0.zip -d zhixiaoshui
+cd zhixiaoshui
+bash start.sh
+
+# 首次体验演示数据（可选）
+.venv/bin/python scripts/seed_demo.py --reset
+# 浏览器打开 http://localhost:8501</div>
+          </div>
+          <div class="steps-box" style="margin-top:14px">
+            <h4>Windows</h4>
+            <div class="code">解压后双击 start.bat
+或在 PowerShell 中执行：
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\streamlit run ui\streamlit_app.py</div>
+          </div>
+          <div class="steps-box" style="margin-top:14px">
+            <h4>Docker（服务器部署）</h4>
+            <div class="code">docker build -t zhixiaoshui .
+docker run -d -p 8501:8501 \
+  -v $(pwd)/data:/app/data zhixiaoshui</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="online">
+    <div class="wrap">
+      <div class="demo-band reveal">
+        <div>
+          <h3>想先试试？打开在线演示</h3>
+          <p>公共演示环境（演示数据，请勿录入真实信息）· 完整功能可操作 · 数据每日重置</p>
+        </div>
+        <a class="btn btn-primary" href="/app/" target="_blank" rel="noopener">进入在线演示 →</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head reveal"><span class="tag">常见问题</span><h2>你可能关心的事</h2></div>
+      <div class="faq">
+        <details open><summary>没有会计基础，真的能自己报税吗？</summary><p>能。系统把每个税种做成向导式页面，算税由确定性代码完成，AI 助手负责用大白话解释每一步。你只需要按提示录入收入、费用和发票信息，生成申报表后到电子税务局核对提交。</p></details>
+        <details><summary>我的财务数据安全吗？</summary><p>数据默认只保存在本机 <code>data/</code> 目录（CSV），不会上传到任何云端；API Key 只存本地并脱敏显示；备份文件带 SHA-256 校验。项目开源，代码可审计。</p></details>
+        <details><summary>必须购买 DeepSeek API 吗？</summary><p>不必须。不填 Key 时会自动进入离线模式，算税、台账、申报表、结账、归档、备份全部可用；填写 Key 后可使用 AI 对话解释与政策问答（按量计费，费用很低）。</p></details>
+        <details><summary>系统能直接帮我完成申报吗？</summary><p>不能。系统生成申报表与辅助资料、标注来源与口径，实际申报与缴款仍需在电子税务局/扣缴端完成。本工具为辅助软件，不构成税务鉴证，结果以主管税务机关核定为准。</p></details>
+        <details><summary>支持几家公司？多地区税率？</summary><p>支持多公司（多账套）切换，每家公司数据独立；内置城建税 7%/5%/1% 地区预设，附加税费自动计算。</p></details>
+      </div>
+      <div class="disclaimer">⚠️ 免责声明：智小税为辅助工具，不代替电子税务局申报，不构成税务鉴证或代理记账服务；所有计算结果仅供参考，以主管税务机关核定为准。正式申报前请核对数据与政策口径。</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <div class="brand" style="margin-bottom:12px"><span class="brand-logo" style="width:34px;height:34px;font-size:16px">税</span><span style="font-size:17px">智小税<small>让每个小公司都能自己报税</small></span></div>
+        <p style="margin:0;max-width:330px;line-height:1.8">本地优先、开源的小规模纳税人自主税务填报系统。数据留在你自己的电脑里。</p>
+      </div>
+      <div><h4>产品</h4><a href="#features">功能全景</a><a href="#flow">使用流程</a><a href="#shots">界面预览</a><a href="#download">下载安装</a></div>
+      <div><h4>支持</h4><a href="#faq">常见问题</a><a href="mailto:274043505@qq.com">联系作者</a><a href="/app/" target="_blank">在线演示</a><a href="#top">回到顶部 ↑</a></div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 智小税 · Apache-2.0 License · 维护者 snz &lt;274043505@qq.com&gt;</span>
+      <span>⚠️ 仅供参考，以主管税务机关核定为准</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.documentElement.classList.add('js');
+  // 截图切换
+  document.querySelectorAll('.g-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.g-btn').forEach(function(b){b.classList.remove('active')});
+      btn.classList.add('active');
+      var img=document.getElementById('gallery-img');
+      img.style.opacity=0;
+      setTimeout(function(){
+        img.src=btn.dataset.src; img.alt=btn.dataset.cap; img.style.opacity=1;
+        document.getElementById('gallery-cap').textContent=btn.dataset.cap;
+      },150);
+    });
+  });
+  document.getElementById('gallery-img').style.transition='opacity .25s ease';
+  // 复制命令
+  document.querySelectorAll('.copy-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var text=(btn.dataset.copy||'').replace(/&#10;/g,'\n');
+      navigator.clipboard.writeText(text).then(function(){
+        var old=btn.textContent; btn.textContent='已复制 ✓';
+        setTimeout(function(){btn.textContent=old;},1600);
+      });
+    });
+  });
+  // 滚动出现
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }});
+  },{threshold:.12});
+  document.querySelectorAll('.reveal').forEach(function(el){io.observe(el)});
+</script>
+</body>
+</html>

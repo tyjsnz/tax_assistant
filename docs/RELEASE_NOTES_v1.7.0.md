@@ -1,5 +1,7 @@
 # v1.7.0 发布说明（Release Notes）
 
+> 在线体验：https://tax.flacn.net ｜ 官网与下载：https://tax.flacn.net ｜ 在线演示：https://tax.flacn.net/app/
+
 发布日期：2026-11-10 · 标签：`v1.7.0`
 
 > 小规模纳税人自主税务填报系统 · 本地优先 · 确定性算税 + DeepSeek 辅助

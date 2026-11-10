@@ -58,12 +58,12 @@ DISCLAIMER = "⚠️ 仅供参考，以主管税务机关核定为准"
 # =============================================================================
 COMPANY: dict[str, Any] = {
     "id": "main",
-    "name": "禄劝云睿网络科技开发有限公司",
-    "short_name": "云睿科技",
+    "name": "某科技有限公司",
+    "short_name": "某科技",
     "taxpayer_type": "小规模纳税人",
     "industry": "网络科技（技术服务、软件开发）",
-    "unified_social_credit_code": "91530128059467473X",
-    "tax_authority": "国家税务总局昆明市税务局",
+    "unified_social_credit_code": "91530000MA0000000X",
+    "tax_authority": "国家税务总局某市税务局",
     "province": "云南省",
     "city": "昆明市",
     "county": "禄劝彝族苗族自治县",

@@ -54,7 +54,7 @@ def _invoice(**overrides) -> dict:
         "invoice_date": "2026-01-15",
         "direction": "销项",
         "invoice_type": "普票",
-        "seller": "禄劝云睿网络科技开发有限公司",
+        "seller": "某科技有限公司",
         "buyer": "云图科技有限公司",
         "total_inclusive": 20600.0,
         "status": "待匹配",
@@ -103,7 +103,7 @@ class TestInvoiceParsing:
         assert invoice["invoice_date"] == "2026-01-15"
         assert invoice["invoice_type"] == "普票"
         assert invoice["direction"] == "销项"
-        assert invoice["seller"] == "禄劝云睿网络科技开发有限公司"
+        assert invoice["seller"] == "某科技有限公司"
         assert invoice["buyer"] == "云图科技有限公司"
         assert invoice["amount_exclusive"] == 20396.04
         assert invoice["tax_amount"] == 203.96
@@ -164,7 +164,7 @@ class TestInvoiceParsing:
             "电子发票（普通发票）\n"
             "发票号码：26530100000099998888\n"
             "开票日期：2026-01-15\n"
-            "销售方名称：禄劝云睿网络科技开发有限公司\n"
+            "销售方名称：某科技有限公司\n"
             "购买方名称：云图科技有限公司\n"
             "合计金额：20,396.04\n"
             "合计税额：203.96\n"
@@ -215,7 +215,7 @@ class TestInvoiceParsing:
                 "invoice_date": "2026年1月15日",
                 "amount_exclusive": "¥20,396.04",
                 "tax_amount": "203.96",
-                "seller": "禄劝云睿网络科技开发有限公司",
+                "seller": "某科技有限公司",
                 "buyer": "云图科技有限公司",
             }
         )
@@ -254,7 +254,7 @@ class TestInvoiceParsing:
             "invoice_no": "",
             "invoice_date": "2026-01-15",
             "seller": "某某供应商",
-            "buyer": "禄劝云睿网络科技开发有限公司",
+            "buyer": "某科技有限公司",
             "amount_exclusive": 100.0,
             "tax_amount": 1.0,
             "total_inclusive": 101.0,
@@ -735,7 +735,7 @@ class TestImporter:
                 "total_inclusive": 20600.0,
                 "invoice_type": "普通发票",
                 "direction": "销项",
-                "seller": "禄劝云睿网络科技开发有限公司",
+                "seller": "某科技有限公司",
                 "buyer": "云图科技有限公司",
             }
         )

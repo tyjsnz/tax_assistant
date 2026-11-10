@@ -1,7 +1,7 @@
 """ledger 台账模块测试：CRUD、汇总、期间取数、分录平衡、报表、示例数据、CSV 与审计日志。
 
 测试环境由 ``tests/conftest.py`` 自动隔离（临时目录 + 每个用例清空台账），
-示例数据通过 ``demo_data`` fixture 加载（企业：禄劝云睿网络科技，2026 Q1—Q4）。
+示例数据通过 ``demo_data`` fixture 加载（企业：某科技，2026 Q1—Q4）。
 """
 
 from __future__ import annotations

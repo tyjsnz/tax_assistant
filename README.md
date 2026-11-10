@@ -13,6 +13,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Version](https://img.shields.io/badge/version-1.7.0-informational)
 
+🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 📖 **文档**：[快速开始](docs/QUICKSTART.md) · [使用指南](docs/USER_GUIDE.md) ·
 [部署](docs/DEPLOYMENT.md) · [架构](docs/ARCHITECTURE.md) · [安全](SECURITY.md) ·
 [路线图](docs/ROADMAP.md) · [常见问题](docs/FAQ.md)
@@ -251,6 +252,8 @@ tax/
 ├── CHANGELOG.md               # 版本记录
 ├── SECURITY.md                # 安全与合规说明
 ├── scripts/seed_demo.py       # 演示账套生成脚本（虚构数据）
+├── site/                       # 官网/宣传页（index.html + 脱敏截图 + 下载）
+├── start.sh / start.bat        # 一键启动脚本（macOS/Linux / Windows）
 ├── LICENSE                    # Apache-2.0
 ├── Dockerfile                 # 一键部署（容器内数据挂载 /app/data）
 ├── CONTRIBUTING.md            # 贡献指南
@@ -540,6 +543,7 @@ data/
 - **许可证**：Apache-2.0（见 [LICENSE](LICENSE)），允许商用与二次开发，保留版权与免责声明；
 - **Docker**：`docker build -t tax-agent . && docker run -p 8501:8501 -v $(pwd)/data:/app/data tax-agent`（数据目录挂载持久化；容器内无 macOS Vision OCR，签名/截图识别请用 XML/OFD 或手动粘贴）；
 - **CI**：GitHub Actions 在 Python 3.11 / 3.12 上跑离线全量 pytest（`.github/workflows/ci.yml`）；
+- **在线**：官网 [https://tax.flacn.net](https://tax.flacn.net) · 在线演示 [/app/](https://tax.flacn.net/app/)（公共演示数据，请勿录入真实信息）；
 - **文档**：见 [docs/README.md](docs/README.md)（快速开始/使用指南/部署/架构/FAQ/路线图/发布清单）；
 - **演示数据**：`python scripts/seed_demo.py --reset` 生成虚构演示公司（可随时删除），用于快速体验；
 - **贡献**：见 [CONTRIBUTING.md](CONTRIBUTING.md)；政策变更请按 [docs/POLICY_MAINTENANCE.md](docs/POLICY_MAINTENANCE.md) 追加版本；
