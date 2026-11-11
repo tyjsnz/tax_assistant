@@ -1136,11 +1136,41 @@ def _render_correction_tab() -> None:
             ]
         )
         st.dataframe(frame, width="stretch", hide_index=True)
-        options = {f"{item['employee_name']}（{item['employee_id']}）": item["employee_id"] for item in scan["items"]}
-        selected = st.selectbox("选择员工生成更正方案", list(options), key="correction_employee")
+        item_map = {
+            f"{item['employee_name']}（{item['employee_id']}）": item for item in scan["items"]
+        }
+        selected = st.selectbox("选择员工生成更正方案", list(item_map), key="correction_employee")
+        selected_item = item_map[selected]
+        raw_leave = str(selected_item.get("leave_date") or "")
+        try:
+            default_scan_leave = date.fromisoformat(raw_leave[:10]) if raw_leave else date.today()
+        except ValueError:
+            default_scan_leave = date.today()
+        scan_leave_date = st.date_input(
+            "离职日期（默认员工档案，可临时调整后重新计算）",
+            value=default_scan_leave,
+            key=f"scan_leave_date_{selected_item.get('employee_id')}",
+        )
+        if raw_leave and scan_leave_date.isoformat() != raw_leave[:10]:
+            st.caption(
+                f"已临时调整为 {scan_leave_date.isoformat()}（档案为 {raw_leave[:10]}），"
+                "本次按临时日期计算；如需长期生效请勾选下方同步。"
+            )
+        sync_scan_leave = st.checkbox(
+            "同步更新员工档案离职日期", value=False, key="scan_sync_leave"
+        )
         if st.button("🧮 生成更正方案", key="correction_build", type="primary", width="stretch"):
             try:
-                st.session_state["correction_plan"] = corrections.build_correction_plan(options[selected])
+                if sync_scan_leave:
+                    employee_api.update_employee(
+                        str(selected_item["employee_id"]),
+                        {"status": "离职", "leave_date": scan_leave_date.isoformat()},
+                    )
+                same_as_file = bool(raw_leave) and scan_leave_date.isoformat() == raw_leave[:10]
+                st.session_state["correction_plan"] = corrections.build_correction_plan(
+                    str(selected_item["employee_id"]),
+                    leave_month=None if same_as_file and not sync_scan_leave else scan_leave_date.isoformat()[:7],
+                )
                 plan = st.session_state["correction_plan"]
             except Exception as exc:  # noqa: BLE001
                 st.error(f"生成失败：{exc}")

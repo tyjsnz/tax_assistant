@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.10.3-informational)
+![Version](https://img.shields.io/badge/version-1.10.4-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -542,6 +542,7 @@ data/
 * **申诉台账**：登记员工申诉类型、日期、状态（待处理/已沟通/已撤销/已更正/已关闭）、撤销日期与处理结果；
 * **知识库与 AI**：新增《离职员工多申报工资与个人所得税异议申诉处理》政策指引；AI 助手新增「离职与申报纠错」意图与工具，可直接扫描并生成方案；
 * **零基础指引**：处置页内置「3 步走」说明，操作单同时导出 Excel 与可打印 PDF（九步操作 + 留痕清单）。
+* **自动扫描也可调整离职日期**：即使员工档案已有离职日期，生成更正方案前也可临时改日期重算（可同步回档案）；
 * **离职日期强制校验**：状态改为「离职」必须填写实际离职日期；历史缺失数据会在首页/结账前检查提醒，工资表不再为缺失日期的离职员工继续生成；
 * **无离职日期也能处理**：员工忘记登记离职/系统里仍是在职时，可在「手动生成更正方案」**选择离职日期，系统自动带出需更正月份**（也可手动调整）；
 * **勾选式进度清单**：九步操作可逐项打勾、显示完成百分比，防止漏步；
@@ -640,4 +641,4 @@ data/
 
 ---
 
-*版本 1.10.3 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.10.4 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
