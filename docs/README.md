@@ -11,6 +11,7 @@
 | [SECURITY.md](../SECURITY.md) | 所有人 | 数据本地化、API Key、权限、合规边界、漏洞报告 |
 | [ROADMAP.md](ROADMAP.md) | 关注项目进展 | 已完成里程碑与后续计划 |
 | [FAQ.md](FAQ.md) | 使用者 | 常见问题（免税、专票、结账、导入、错误提示） |
+| [GUIDE_扣缴端离职更正.md](GUIDE_扣缴端离职更正.md) | 使用者/内容制作 | 离职更正流程图、视频分镜脚本、打印清单 |
 | [RELEASE.md](RELEASE.md) | 维护者 | 发布检查清单（版本、测试、Docker、tag、Release Notes） |
 | [POLICY_MAINTENANCE.md](POLICY_MAINTENANCE.md) | 维护者 | 税收政策更新流程与政策版本维护 |
 | [CONTRACTS.md](CONTRACTS.md) | 开发者 | 模块接口契约（引擎/台账/申报/Agent/UI） |
@@ -21,7 +22,7 @@
 | [CONTRACTS_P1_C.md](CONTRACTS_P1_C.md) | 开发者 | 汇算清缴契约 |
 | [CONTRACTS_P1_D.md](CONTRACTS_P1_D.md) | 开发者 | 工商年报/残保金契约 |
 
-另见：[RELEASE_NOTES_v1.9.0.md](RELEASE_NOTES_v1.9.0.md)（当前版本发布说明）、[v1.8.0](RELEASE_NOTES_v1.8.0.md)、[v1.7.0](RELEASE_NOTES_v1.7.0.md)。
+另见：[RELEASE_NOTES_v1.10.0.md](RELEASE_NOTES_v1.10.0.md)（当前版本发布说明）、[v1.9.0](RELEASE_NOTES_v1.9.0.md)、[v1.8.0](RELEASE_NOTES_v1.8.0.md)、[v1.7.0](RELEASE_NOTES_v1.7.0.md)。
 
 在线：官网 https://tax.flacn.net ｜ 演示 https://tax.flacn.net/app/ ｜ 源码 https://github.com/tyjsnz/tax_assistant
 

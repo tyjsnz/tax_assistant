@@ -116,3 +116,27 @@ class TestDisputes:
         employee = employees.add_employee({"name": "赵六", "hire_date": "2026-01-01"})
         with pytest.raises(ValueError):
             corrections.add_dispute(employee["id"], "不存在的类型", "2026-06-10")
+
+
+class TestCorrectionProgress:
+    def test_progress_checklist(self):
+        employee = _setup_departed_employee()
+        plan = corrections.build_correction_plan(employee["id"])
+        steps = plan["steps"]
+        rows = corrections.list_correction_progress(employee["id"], steps)
+        assert len(rows) == len(steps)
+        assert all(row["done"] is False for row in rows)
+
+        summary = corrections.correction_progress_summary(employee["id"])
+        assert summary["done"] == 0 and summary["total"] == len(steps)
+
+        corrections.set_correction_step(employee["id"], 1, True)
+        summary = corrections.correction_progress_summary(employee["id"])
+        assert summary["done"] == 1
+        rows = corrections.list_correction_progress(employee["id"])
+        assert rows[0]["done"] is True and rows[0]["done_at"]
+
+        corrections.set_correction_step(employee["id"], 1, False)
+        assert corrections.correction_progress_summary(employee["id"])["done"] == 0
+
+        assert corrections.reset_correction_progress(employee["id"]) == len(steps)

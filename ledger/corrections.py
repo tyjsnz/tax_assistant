@@ -357,3 +357,88 @@ def export_correction_plan_pdf(plan: dict[str, Any], path: str | Path | None = N
     )
     doc.build(elements)
     return target
+
+
+# =============================================================================
+# 勾选式进度清单（小白照着做，防漏步）
+# =============================================================================
+PROGRESS_TABLE = "correction_progress"
+
+
+def _step_title(step: str) -> str:
+    text = str(step or "").strip()
+    return text[:120]
+
+
+def list_correction_progress(employee_id: str, plan_steps: list[str] | None = None) -> list[dict[str, Any]]:
+    """读取某员工的更正进度；首次读取时用更正方案步骤初始化。
+
+    返回按 ``step_no`` 排序的步骤列表（含 ``done`` 布尔值与完成时间）。
+    """
+    rows = [
+        row
+        for row in store.table(PROGRESS_TABLE).read()
+        if str(row.get("employee_id")) == str(employee_id)
+    ]
+    if not rows and plan_steps:
+        employee = employees.get_employee(employee_id) or {}
+        for index, step in enumerate(plan_steps, start=1):
+            store.table(PROGRESS_TABLE).append(
+                {
+                    "employee_id": str(employee_id),
+                    "employee_name": str(employee.get("name") or ""),
+                    "step_no": str(index),
+                    "step_title": _step_title(step),
+                    "done": "否",
+                    "done_at": "",
+                }
+            )
+        rows = [
+            row
+            for row in store.table(PROGRESS_TABLE).read()
+            if str(row.get("employee_id")) == str(employee_id)
+        ]
+    rows.sort(key=lambda row: int(str(row.get("step_no") or 0)))
+    for row in rows:
+        row["done"] = str(row.get("done") or "").lower() in {"是", "true", "1", "yes"}
+    return rows
+
+
+def set_correction_step(employee_id: str, step_no: int | str, done: bool) -> dict[str, Any]:
+    """勾选/取消某一步骤完成状态。"""
+    rows = [
+        row
+        for row in store.table(PROGRESS_TABLE).read()
+        if str(row.get("employee_id")) == str(employee_id) and str(row.get("step_no")) == str(step_no)
+    ]
+    if not rows:
+        raise ValueError(f"未找到员工 {employee_id} 的步骤 {step_no}，请先生成更正方案")
+    patch = {
+        "done": "是" if done else "否",
+        "done_at": config.now_text() if done else "",
+    }
+    record = store.table(PROGRESS_TABLE).update(str(rows[0].get("id")), patch)
+    log_user_action("更新离职纠错进度", f"{employee_id} 步骤 {step_no}：{'完成' if done else '取消'}")
+    return record
+
+
+def correction_progress_summary(employee_id: str) -> dict[str, Any]:
+    """返回进度汇总：已完成/总数/百分比。"""
+    rows = list_correction_progress(employee_id)
+    total = len(rows)
+    done = sum(1 for row in rows if row.get("done"))
+    return {"done": done, "total": total, "percent": round(done * 100 / total) if total else 0}
+
+
+def reset_correction_progress(employee_id: str) -> int:
+    """重置某员工全部步骤为未完成，返回重置条数。"""
+    rows = [
+        row
+        for row in store.table(PROGRESS_TABLE).read()
+        if str(row.get("employee_id")) == str(employee_id)
+    ]
+    for row in rows:
+        store.table(PROGRESS_TABLE).update(str(row.get("id")), {"done": "否", "done_at": ""})
+    if rows:
+        log_user_action("重置离职纠错进度", f"{employee_id}：{len(rows)} 步")
+    return len(rows)

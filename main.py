@@ -14,6 +14,7 @@ Web 界面是主要使用方式（``.venv/bin/streamlit run ui/streamlit_app.py`
     python main.py settlement --year 2026 --save-inputs entertainment_actual=10000 employees=5
     python main.py cit-annual --year 2026
     python main.py employees
+    python main.py severance --monthly-wage 10000 --years 2 --months 3 --local-avg-wage 7000
     python main.py payroll-scan
     python main.py correction-plan --employee EMP000001
     python main.py payroll --period 2026-11 --build --calc --confirm
@@ -400,6 +401,36 @@ def cmd_employee_delete(args: argparse.Namespace) -> int:
         return 1
     employees.delete_employee(args.id)
     print(f"\n🗑️ 已删除员工 {args.id}")
+    return 0
+
+
+def cmd_severance(args: argparse.Namespace) -> int:
+    """离职经济补偿金与一次性补偿个税测算。"""
+    from engine import calc_severance
+
+    result = calc_severance(
+        args.monthly_wage,
+        args.years,
+        months=args.months,
+        local_average_wage=args.local_avg_wage,
+        amount=args.amount or None,
+    )
+    if args.json:
+        _print_json(result)
+        return 0
+    pay, tax = result["pay"], result["tax"]
+    print("\n💰 离职补偿金分项测算")
+    print("-" * 80)
+    print(f"  月工资 {pay['monthly_wage']:,.2f} 元 · 工作 {pay['years']} 年 {pay['months']} 个月 "
+          f"→ 补偿月数 {pay['years_factor']:g} 个月")
+    print(f"  经济补偿金参考：{pay['amount']:,.2f} 元（计发基数 {pay['base_wage']:,.2f} 元）")
+    print(f"  一次性补偿收入：{result['total_amount']:,.2f} 元")
+    print(f"  3 倍社平免税额度：{tax['exemption_limit']:,.2f} 元；应税部分 {tax['taxable_amount']:,.2f} 元")
+    print(f"  适用税率 {tax['rate'] * 100:.0f}% · 速算扣除 {tax['quick_deduction']:,.2f} 元")
+    print(f"  应缴个税：{tax['tax']:,.2f} 元；税后到手：{result['net_amount']:,.2f} 元")
+    for warning in result.get("warnings") or []:
+        print(f"  ⚠️ {warning}")
+    print(f"  {config.DISCLAIMER}")
     return 0
 
 
@@ -1067,6 +1098,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_emp_delete.add_argument("--id", required=True)
     p_emp_delete.add_argument("--yes", action="store_true")
     p_emp_delete.set_defaults(func=cmd_employee_delete)
+
+    p_sev = sub.add_parser("severance", help="离职经济补偿金与一次性补偿个税测算")
+    p_sev.add_argument("--monthly-wage", type=float, required=True, help="离职前月工资（元）")
+    p_sev.add_argument("--years", type=int, default=0, help="工作年限整年")
+    p_sev.add_argument("--months", type=int, default=0, help="零头月数 0-11")
+    p_sev.add_argument("--local-avg-wage", type=float, default=0.0, help="当地上年职工月平均工资（元）")
+    p_sev.add_argument("--amount", type=float, default=0.0, help="实际补偿金额（可选，默认按法定参考）")
+    p_sev.add_argument("--json", action="store_true")
+    p_sev.set_defaults(func=cmd_severance)
 
     p_scan = sub.add_parser("payroll-scan", help="扫描离职后仍申报工资的员工")
     p_scan.add_argument("--json", action="store_true")

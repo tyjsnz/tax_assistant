@@ -1194,6 +1194,89 @@ def _render_correction_tab() -> None:
             except Exception as exc:  # noqa: BLE001
                 st.warning(f"PDF 导出失败：{exc}")
 
+        # 勾选式进度清单
+        try:
+            progress_rows = corrections.list_correction_progress(
+                str(plan.get("employee_id") or ""), plan.get("steps") or []
+            )
+            progress_summary = corrections.correction_progress_summary(str(plan.get("employee_id") or ""))
+        except Exception as exc:  # noqa: BLE001
+            progress_rows, progress_summary = [], {"done": 0, "total": 0, "percent": 0}
+            st.warning(f"进度清单不可用：{exc}")
+        if progress_rows:
+            ui.section("✅ 操作进度清单（做完一步勾一步，防止漏步）")
+            st.progress(
+                min(max(int(progress_summary.get("percent") or 0), 0), 100) / 100.0,
+                text=f"已完成 {progress_summary.get('done')} / {progress_summary.get('total')} 步"
+                f"（{progress_summary.get('percent')}%）",
+            )
+            for item in progress_rows:
+                checked = st.checkbox(
+                    item.get("step_title") or f"第 {item.get('step_no')} 步",
+                    value=bool(item.get("done")),
+                    key=f"corr_step_{plan.get('employee_id')}_{item.get('step_no')}",
+                )
+                if checked != bool(item.get("done")):
+                    try:
+                        corrections.set_correction_step(plan.get("employee_id"), item.get("step_no"), checked)
+                    except Exception as exc:  # noqa: BLE001
+                        st.warning(f"保存进度失败：{exc}")
+            if st.button("↩️ 重置全部进度", key="correction_progress_reset"):
+                try:
+                    corrections.reset_correction_progress(str(plan.get("employee_id") or ""))
+                    st.success("进度已重置")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"重置失败：{exc}")
+
+        # 离职补偿金分项测算
+        with st.expander("💰 离职补偿金分项测算（经济补偿金参考 + 一次性补偿个税）", expanded=False):
+            st.caption(
+                "经济补偿金按《劳动合同法》第四十七条测算；一次性补偿收入在当地上年职工平均工资 3 倍以内免征个税，"
+                "超过部分单独按综合所得税率表计税（财税〔2018〕164号第五条），不并入当年综合所得。"
+            )
+            cols = st.columns(3)
+            with cols[0]:
+                monthly_wage = st.number_input("离职前月工资（元）", min_value=0.0, value=10_000.0, step=500.0, key="sev_wage")
+                years = st.number_input("工作年限（整年）", min_value=0, value=2, step=1, key="sev_years")
+            with cols[1]:
+                months = st.number_input("零头月数（0–11）", min_value=0, max_value=11, value=3, step=1, key="sev_months")
+                local_avg = st.number_input("当地上年职工月平均工资（元）", min_value=0.0, value=7_000.0, step=500.0, key="sev_avg")
+            with cols[2]:
+                override_amount = st.number_input(
+                    "实际补偿金额（元，0=按法定参考）", min_value=0.0, value=0.0, step=1_000.0, key="sev_amount"
+                )
+            if st.button("🧮 测算补偿金与个税", key="sev_calc", width="stretch"):
+                try:
+                    from engine import calc_severance
+
+                    st.session_state["severance_result"] = calc_severance(
+                        monthly_wage,
+                        years,
+                        months=months,
+                        local_average_wage=local_avg,
+                        amount=override_amount or None,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"测算失败：{exc}")
+            sev = st.session_state.get("severance_result")
+            if sev:
+                pay, tax = sev.get("pay") or {}, sev.get("tax") or {}
+                ui.metric_row(
+                    [
+                        {"label": "经济补偿金参考", "value": F.fmt_money(pay.get("amount"))},
+                        {"label": "免税额度（3 倍社平）", "value": F.fmt_money(tax.get("exemption_limit"))},
+                        {"label": "应税金额", "value": F.fmt_money(tax.get("taxable_amount"))},
+                        {"label": "一次性补偿个税", "value": F.fmt_money(tax.get("tax"))},
+                        {"label": "税后到手", "value": F.fmt_money(sev.get("net_amount"))},
+                    ],
+                    columns=5,
+                )
+                st.info(sev.get("note") or "")
+                for warning in sev.get("warnings") or []:
+                    st.warning(warning)
+                st.caption("提示：该测算不含当月正常工资、社保公积金与离职补偿的税前扣除处理；以当地口径为准。")
+
     st.divider()
     ui.section("个税异议申诉台账", "记录员工在个税 APP 的申诉、撤销、沟通与更正闭环")
     try:

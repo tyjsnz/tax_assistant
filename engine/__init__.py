@@ -15,6 +15,14 @@ from engine.cit_settlement import (
     get_settlement_sources,
 )
 from engine.corporate_tax import calc_cit_prepay, calc_corp_tax
+from engine.severance import (
+    SEVERANCE_SOURCES,
+    calc_severance,
+    calc_severance_pay,
+    calc_severance_tax,
+    get_severance_sources,
+    severance_years_factor,
+)
 from engine.payroll_correction import (
     LATE_FEE_DAILY_RATE,
     calc_correction_plan,
@@ -99,6 +107,12 @@ __all__ = [
     "calc_vat",
     "calc_corp_tax",
     "calc_cit_prepay",
+    "calc_severance",
+    "calc_severance_pay",
+    "calc_severance_tax",
+    "get_severance_sources",
+    "severance_years_factor",
+    "SEVERANCE_SOURCES",
     "calc_correction_plan",
     "estimate_cit_impact",
     "estimate_late_fee",

@@ -553,6 +553,22 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("updated_at", "str", "更新时间"),
         ],
     },
+    # 离职纠错：勾选式进度清单（P2）
+    "correction_progress": {
+        "file": "correction_progress.csv",
+        "prefix": "CPG",
+        "label": "离职纠错进度",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("employee_id", "str", "员工编号"),
+            _col("employee_name", "str", "员工姓名"),
+            _col("step_no", "str", "步骤序号"),
+            _col("step_title", "str", "步骤内容"),
+            _col("done", "str", "已完成"),
+            _col("done_at", "str", "完成时间"),
+            _col("updated_at", "str", "更新时间"),
+        ],
+    },
     # 会计期间（月结/季结状态机，P0-3）
     "periods": {
         "file": "periods.csv",

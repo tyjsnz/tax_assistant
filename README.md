@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.9.0-informational)
+![Version](https://img.shields.io/badge/version-1.10.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -271,6 +271,7 @@ tax/
 │   ├── iit.py                 # 个人所得税累计预扣法、预扣率表、专项附加扣除
 │   ├── cit_settlement.py      # 企业所得税汇算：纳税调整限额、亏损弥补、汇算测算
 │   ├── payroll_correction.py  # 离职多申报更正：逐月重算、退税/补税、企税影响测算
+│   ├── severance.py           # 离职经济补偿金 + 一次性补偿个税测算
 │   ├── vat.py                 # 增值税及附加税费
 │   ├── corporate_tax.py       # 企业所得税（年度 / 季度预缴 / 小微判定）
 │   ├── rd_deduction.py        # 研发费用加计扣除与费用归集
@@ -541,6 +542,9 @@ data/
 * **申诉台账**：登记员工申诉类型、日期、状态（待处理/已沟通/已撤销/已更正/已关闭）、撤销日期与处理结果；
 * **知识库与 AI**：新增《离职员工多申报工资与个人所得税异议申诉处理》政策指引；AI 助手新增「离职与申报纠错」意图与工具，可直接扫描并生成方案；
 * **零基础指引**：处置页内置「3 步走」说明，操作单同时导出 Excel 与可打印 PDF（九步操作 + 留痕清单）。
+* **勾选式进度清单**：九步操作可逐项打勾、显示完成百分比，防止漏步；
+* **离职补偿金分项测算**：经济补偿金参考（劳动合同法 47 条，3 倍社平封顶/12 年）+ 一次性补偿个税（3 倍社平以内免征、超出单独计税）+ 税后到手；
+* **操作示意图与视频脚本**：新增《扣缴端离职更正操作示意图 + 视频分镜脚本》与打印清单。
 
 入口：「👥 员工与工资」→「🧯 离职与纠错」；CLI：`python main.py payroll-scan`、`python main.py correction-plan --employee <员工编号>`。
 
@@ -634,4 +638,4 @@ data/
 
 ---
 
-*版本 1.9.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.10.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
