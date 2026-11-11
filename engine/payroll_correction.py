@@ -131,9 +131,9 @@ def calc_correction_plan(
         leave_month = leave_month or (max(kept_periods) if kept_periods else removed_periods[0])
         cutoff_source = "manual_periods"
     elif leave_month:
-        if not _re.fullmatch(r"\d{4}-\d{2}", str(leave_month).strip()):
-            raise ValueError("手动离职月份格式应为 YYYY-MM")
-        leave_month = str(leave_month).strip()
+        if not _re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", str(leave_month).strip()):
+            raise ValueError("手动离职月份/日期格式应为 YYYY-MM 或 YYYY-MM-DD")
+        leave_month = str(leave_month).strip()[:7]
         kept_periods, removed_periods = correction_periods(f"{leave_month}-01", periods)
         cutoff_source = "manual_leave_month"
     elif leave_date:

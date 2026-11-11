@@ -113,6 +113,14 @@ class TestCitImpact:
 
 
 class TestManualCutoff:
+    def test_manual_leave_date_string(self):
+        emp = {"id": "E9", "name": "王五"}
+        rows = [_row(f"2026-0{i}", 15_000, 180) for i in range(1, 8)]
+        plan = calc_correction_plan(emp, rows, leave_month="2026-06-04")
+        assert plan["leave_month"] == "2026-06"
+        assert plan["removed_periods"] == ["2026-07"]
+        assert plan["kept_periods"] == ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]
+
     def test_manual_leave_month_without_leave_date(self):
         emp = {"id": "E9", "name": "王五", "status": "在职"}
         rows = [_row(f"2026-0{i}", 15_000, 180) for i in range(1, 5)]

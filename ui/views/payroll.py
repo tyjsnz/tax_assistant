@@ -1195,28 +1195,62 @@ def _render_correction_tab() -> None:
             if not manual_periods_available:
                 st.info("该员工暂无工资记录，无需更正。")
             else:
-                manual_leave_month = st.selectbox(
-                    "离职月份（该月之后视为误申报）",
-                    manual_periods_available,
-                    index=max(len(manual_periods_available) - 2, 0),
-                    key="manual_leave_month",
+                employee_for_manual = next(
+                    (item for item in all_people if str(item.get("id")) == str(manual_id)), {}
                 )
+                raw_leave = str(employee_for_manual.get("leave_date") or "")
+                try:
+                    default_leave = date.fromisoformat(raw_leave[:10]) if raw_leave else date.today()
+                except ValueError:
+                    default_leave = date.today()
+                manual_leave_date = st.date_input(
+                    "离职日期（按此日期自动计算需更正月份，可自行选择）",
+                    value=default_leave,
+                    key=f"manual_leave_date_{manual_id}",
+                )
+                leave_month_text = manual_leave_date.isoformat()[:7]
+                computed_removed = [item for item in manual_periods_available if item > leave_month_text]
+                computed_kept = [item for item in manual_periods_available if item <= leave_month_text]
+                st.caption(
+                    f"该员工工资记录共 {len(manual_periods_available)} 个月"
+                    f"（{manual_periods_available[0]} ~ {manual_periods_available[-1]}）；"
+                    f"按离职日期 {manual_leave_date.isoformat()}："
+                    f"保留月份 {'、'.join(computed_kept) or '无'}；"
+                    f"应更正月份 {'、'.join(computed_removed) or '无'}。"
+                )
+                if not computed_removed:
+                    st.info("按所选离职日期，没有需要更正的月份（离职日期晚于或等于最后工资月份）。")
                 manual_removed = st.multiselect(
-                    "或直接勾选需更正月份（优先，可多选）",
+                    "可手动调整需更正月份（默认已按离职日期自动带出）",
                     manual_periods_available,
-                    key="manual_removed_periods",
+                    default=computed_removed,
+                    key=f"manual_removed_{manual_id}_{leave_month_text}",
+                )
+                sync_leave = st.checkbox(
+                    "同时把该离职日期写入员工档案（推荐，便于以后自动扫描）",
+                    value=False,
+                    key=f"manual_sync_leave_{manual_id}",
                 )
                 if st.button("🧮 生成手动更正方案", key="manual_build", type="primary", width="stretch"):
-                    try:
-                        st.session_state["correction_plan"] = corrections.build_correction_plan(
-                            manual_id,
-                            leave_month=None if manual_removed else manual_leave_month,
-                            removed_periods=manual_removed or None,
-                        )
-                        st.success("已生成更正方案")
-                        st.rerun()
-                    except Exception as exc:  # noqa: BLE001
-                        st.error(f"生成失败：{exc}")
+                    if not manual_removed:
+                        st.warning("请至少选择一个需更正月份；如无需更正，说明该员工没有误申报。")
+                    else:
+                        try:
+                            if sync_leave:
+                                employee_api.update_employee(
+                                    manual_id,
+                                    {"status": "离职", "leave_date": manual_leave_date.isoformat()},
+                                )
+                            removed_override = manual_removed if manual_removed != computed_removed else None
+                            st.session_state["correction_plan"] = corrections.build_correction_plan(
+                                manual_id,
+                                leave_month=leave_month_text,
+                                removed_periods=removed_override,
+                            )
+                            st.success("已生成更正方案")
+                            st.rerun()
+                        except Exception as exc:  # noqa: BLE001
+                            st.error(f"生成失败：{exc}")
 
     if plan:
         totals = plan.get("totals") or {}
