@@ -25,6 +25,7 @@ PAGES = [
     "🧯 离职与纠错",
     "📥 票据与流水",
     "🧾 发票合规",
+    "⚡ AI 代办",
     "🧮 算税工作台",
     "📋 申报填报",
     "📊 汇算清缴",
@@ -59,7 +60,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 15 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 16 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     labels = [button.label for button in at.button]
@@ -643,3 +644,13 @@ def test_invoice_check_page_renders() -> None:
     _assert_clean(at, "发票合规")
     assert at.selectbox(key="invoice_type").value
     assert at.button(key="invoice_assess")
+
+
+def test_automation_page_renders() -> None:
+    """AI 代办页：四个代办 tab 与预览按钮正常渲染。"""
+    at = _new_app()
+    _goto(at, "⚡ AI 代办")
+    _assert_clean(at, "AI 代办")
+    labels = [tab.label for tab in at.tabs]
+    assert any("工资个税" in label for label in labels)
+    assert at.button(key="auto_payroll_preview")
