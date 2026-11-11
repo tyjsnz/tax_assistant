@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.26.0-informational)
+![Version](https://img.shields.io/badge/version-1.27.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -104,7 +104,7 @@
 | 📄 工商年报 / 残保金 | 工商年报数据准备表（企业信息/资产估算/人数/校验）、残保金测算（1.5% 比例、分档减缴、30 人以下免征）、社保/残保金申报提醒 | 台账汇总 + 确定性测算 + 清单，不代替公示系统/残联申报 |
 | 🧮 算税引擎 | 增值税及附加、企业所得税（年度/季度预缴）、研发费用加计扣除、印花税 | **确定性 Python 代码**（Decimal 精确计算），LLM 不参与计算 |
 | 📒 台账管理 | 收入 / 费用 / 研发辅助账 / 合同台账，自然语言录入，CSV 导入导出，分录自动生成 | SQLite 之外轻量 CSV 台账 + 原子写入 |
-| 📬 发票归集 | 本地文件夹扫描 + 专用邮箱 IMAP 只读拉取 PDF/OFD/XML，自动解析/去重/入池/生成匹配建议；支持启动时自动扫描 + 命令行定时任务 + 对账看板（重复/疑似红冲/跨期/失败）；邮箱授权码本地 600 权限 | 本地文件 + imaplib + 现有发票解析器 |
+| 📬 发票归集 | 本地文件夹扫描 + 专用邮箱 IMAP 只读拉取 PDF/OFD/XML，自动解析/去重/入池/生成匹配建议；支持启动时自动扫描 + 命令行定时任务 + 对账看板（重复/疑似红冲/跨期/失败）+ 二维码解码/官方查验入口 + 人工复核/查验状态；邮箱授权码本地 600 权限 | 本地文件 + imaplib + 现有发票解析器 |
 | ⚡ AI 代办 | 预览 + 一键执行本地确定性操作：生成工资表、票据匹配入账、生成并归档申报包、导出离职更正操作单；**一键季度流水线**（票据→工资→异常→申报包）；写操作前自动备份 | 确定性工具编排 + 本地备份；不登录电子税务局、不提交申报 |
 | 🧾 发票合规判断 | 规则式回答：能不能入账 / 能不能抵扣增值税 / 能不能企业所得税税前扣除；覆盖专票普票、收据白条、个人消费、跨年发票等场景 | 确定性规则 + 风险提示，不靠 AI 猜 |
 | 📥 票据与流水 | 批量导入数电票（XML/OFD/PDF）与银行流水（CSV/Excel），去重入池、自动匹配、一键确认入账并生成凭证 | 本地解析（xml/zipfile/pypdf/openpyxl）+ 确定性匹配打分 |
@@ -652,4 +652,4 @@ data/
 
 ---
 
-*版本 1.26.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.27.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

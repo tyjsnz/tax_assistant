@@ -109,6 +109,97 @@ def _render_email() -> None:
                 st.error(f"拉取失败：{exc}")
 
 
+def _render_review() -> None:
+    """发票查验辅助：二维码解码 + 官方入口 + 复核/查验状态。"""
+    from ingest import invoice_review
+
+    st.caption(
+        "扫码/上传二维码只是辅助打开查验入口，不代表系统自动认定真伪；最终以全国增值税发票查验平台结果为准。"
+    )
+    tab_qr, tab_review = st.tabs(["📷 二维码辅助", "🧾 逐张复核"])
+    with tab_qr:
+        uploaded = st.file_uploader(
+            "上传发票图片/PDF（PNG/JPG/PDF）",
+            type=["png", "jpg", "jpeg", "pdf"],
+            key="invoice_qr_upload",
+        )
+        if uploaded is not None:
+            result = invoice_review.decode_qr_file(uploaded.getvalue(), uploaded.name)
+            if result.get("ok"):
+                info = invoice_review.inspect_payload(str(result.get("payload") or ""))
+                st.code(info["payload"])
+                if info.get("url"):
+                    if info.get("is_official"):
+                        st.success("识别到官方域名链接，可打开官方查验。")
+                    else:
+                        st.warning(info.get("warning") or "非官方链接，请勿输入账号信息。")
+                    st.link_button("打开二维码链接", info["url"])
+                else:
+                    st.info(info.get("warning") or "二维码不是网址，请到官方平台手工查验。")
+            else:
+                for error in result.get("errors") or []:
+                    st.warning(error)
+        st.markdown("官方查验入口（需登录/验证码）：")
+        st.link_button("全国增值税发票查验平台", "https://inv-veri.chinatax.gov.cn")
+        st.caption(invoice_review.REVIEW_DISCLAIMER)
+
+    with tab_review:
+        try:
+            data = invoice_review.summary()
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"复核数据不可用：{exc}")
+            return
+        cols = st.columns(3)
+        with cols[0]:
+            st.metric("发票总数", f"{data['total']} 张")
+        with cols[1]:
+            st.metric("待复核", f"{(data.get('review') or {}).get('待复核', 0)} 张")
+        with cols[2]:
+            st.metric("未查验", f"{(data.get('verify') or {}).get('未查验', 0)} 张")
+        try:
+            invoices = invoice_review.list_invoices(300)
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"发票列表不可用：{exc}")
+            return
+        if not invoices:
+            st.info("发票池为空；请先到「📥 票据与流水」导入或到「📬 发票归集」扫描。")
+            return
+        labels = {
+            f"{row.get('invoice_no') or row.get('id')} · {row.get('seller') or ''} · ¥{row.get('total_inclusive') or 0}（{row.get('review_status') or '待复核'}）": row
+            for row in invoices
+        }
+        selected = st.selectbox("选择发票", list(labels), key="invoice_review_select")
+        row = labels[selected]
+        st.caption(f"开票日期：{row.get('invoice_date') or '—'} · 来源：{row.get('source_format') or '—'} · 当前查验：{row.get('verify_status') or '未查验'}")
+        cols = st.columns(2)
+        with cols[0]:
+            review_status = st.selectbox(
+                "复核状态", invoice_review.REVIEW_STATUSES,
+                index=invoice_review.REVIEW_STATUSES.index(str(row.get("review_status") or "待复核"))
+                if str(row.get("review_status") or "待复核") in invoice_review.REVIEW_STATUSES else 0,
+                key="invoice_review_status",
+            )
+        with cols[1]:
+            verify_status = st.selectbox(
+                "查验状态", invoice_review.VERIFY_STATUSES,
+                index=invoice_review.VERIFY_STATUSES.index(str(row.get("verify_status") or "未查验"))
+                if str(row.get("verify_status") or "未查验") in invoice_review.VERIFY_STATUSES else 0,
+                key="invoice_verify_status",
+            )
+        note = st.text_input("复核备注", value=str(row.get("review_note") or ""), key="invoice_review_note")
+        if st.button("💾 保存复核结果", key="invoice_review_save", type="primary", width="stretch"):
+            try:
+                invoice_review.update_review(
+                    str(row.get("id")), review_status=review_status,
+                    verify_status=verify_status, review_note=note,
+                )
+                st.success("已保存。")
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"保存失败：{exc}")
+        st.caption("建议：大额/异常发票先到官方平台查验，再标记“已查验-正常/异常”；红冲/作废需结合账务处理。")
+
+
 def _render_dashboard() -> None:
     """发票对账看板：归集/待匹配/重复/疑似红冲作废/跨期。"""
     from ingest import reconciliation
@@ -196,14 +287,16 @@ def render() -> None:
         "本页采用两条合规路径：**手工导出到文件夹** + **专用邮箱 IMAP 只读拉取**。",
         icon="🔐",
     )
-    tabs = st.tabs(["📁 本地文件夹", "📧 邮箱归集", "📊 对账看板", "📋 归集记录"])
+    tabs = st.tabs(["📁 本地文件夹", "📧 邮箱归集", "🔎 查验复核", "📊 对账看板", "📋 归集记录"])
     with tabs[0]:
         _render_folder()
     with tabs[1]:
         _render_email()
     with tabs[2]:
-        _render_dashboard()
+        _render_review()
     with tabs[3]:
+        _render_dashboard()
+    with tabs[4]:
         _render_logs()
     st.caption("导入后请到「📥 票据与流水」核对；高置信匹配可到「⚡ AI 代办」一键入账。")
     theme.disclaimer()

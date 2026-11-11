@@ -258,6 +258,10 @@ def normalize_invoice(raw: dict[str, Any], *, source_format: str = "XML") -> dic
         "source_format": str(source_format or "XML"),
         "raw_json": raw_json,
         "note": note,
+        "review_status": "待复核",
+        "verify_status": "未查验",
+        "review_note": "",
+        "verified_at": "",
     }
 
 

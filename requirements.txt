@@ -17,3 +17,6 @@ pypdf>=4.0
 
 # 归档 PDF 生成（申报表归档 PDF）
 reportlab>=4.0
+
+# 发票二维码解码（可缺失，缺失时降级为手动查验）
+opencv-python-headless>=4.8
