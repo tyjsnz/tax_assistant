@@ -627,6 +627,24 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("updated_at", "str", "更新时间"),
         ],
     },
+    # 发票自动归集日志（v1.25）
+    "collection_log": {
+        "file": "collection_log.csv",
+        "prefix": "CL",
+        "label": "发票归集日志",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("kind", "str", "来源"),
+            _col("source", "str", "文件/邮件"),
+            _col("file_name", "str", "文件名"),
+            _col("file_hash", "str", "文件哈希"),
+            _col("imported", "int", "导入数"),
+            _col("skipped", "int", "跳过数"),
+            _col("status", "str", "状态"),
+            _col("message", "str", "说明"),
+            _col("created_at", "str", "创建时间"),
+        ],
+    },
     # 会计期间（月结/季结状态机，P0-3）
     "periods": {
         "file": "periods.csv",

@@ -25,6 +25,7 @@ PAGES = [
     "🧯 离职与纠错",
     "📥 票据与流水",
     "🧾 发票合规",
+    "📬 发票归集",
     "⚡ AI 代办",
     "🧮 算税工作台",
     "📋 申报填报",
@@ -60,7 +61,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 16 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 17 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     labels = [button.label for button in at.button]
@@ -654,3 +655,13 @@ def test_automation_page_renders() -> None:
     labels = [tab.label for tab in at.tabs]
     assert any("工资个税" in label for label in labels)
     assert at.button(key="auto_payroll_preview")
+
+
+def test_invoice_collector_page_renders() -> None:
+    """发票归集页：文件夹/邮箱/记录三个 tab 正常渲染。"""
+    at = _new_app()
+    _goto(at, "📬 发票归集")
+    _assert_clean(at, "发票归集")
+    labels = [tab.label for tab in at.tabs]
+    assert any("本地文件夹" in label for label in labels)
+    assert at.text_input(key="collector_folder_path")

@@ -18,6 +18,7 @@ PAGE_PAYROLL = "👥 员工与工资"
 PAGE_CORRECTION = "🧯 离职与纠错"
 PAGE_INGEST = "📥 票据与流水"
 PAGE_INVOICE = "🧾 发票合规"
+PAGE_COLLECTOR = "📬 发票归集"
 PAGE_AUTOMATION = "⚡ AI 代办"
 PAGE_CALCULATOR = "🧮 算税工作台"
 PAGE_FILING = "📋 申报填报"
@@ -37,6 +38,7 @@ PAGES: list[tuple[str, str]] = [
     (PAGE_CORRECTION, "ui.views.correction"),
     (PAGE_INGEST, "ui.views.ingest"),
     (PAGE_INVOICE, "ui.views.invoice_check"),
+    (PAGE_COLLECTOR, "ui.views.invoice_collector"),
     (PAGE_AUTOMATION, "ui.views.automation"),
     (PAGE_CALCULATOR, "ui.views.calculator"),
     (PAGE_FILING, "ui.views.filing"),
@@ -51,7 +53,7 @@ PAGES: list[tuple[str, str]] = [
 #: 侧边栏分组（按重要程度/使用频率）
 NAV_GROUPS: list[tuple[str, list[str]]] = [
     ("开始", [PAGE_DASHBOARD, PAGE_ONBOARDING]),
-    ("日常记账", [PAGE_LEDGER, PAGE_INGEST, PAGE_INVOICE]),
+    ("日常记账", [PAGE_LEDGER, PAGE_INGEST, PAGE_COLLECTOR, PAGE_INVOICE]),
     ("每月 / 每季必做", [PAGE_AUTOMATION, PAGE_PAYROLL, PAGE_FILING, PAGE_CHECK]),
     ("季度 / 年度", [PAGE_CALCULATOR, PAGE_SETTLEMENT]),
     ("异常处理", [PAGE_CORRECTION]),
