@@ -491,6 +491,74 @@ def _render_onboarding_banner() -> None:
                 nav.goto(nav.PAGE_ONBOARDING)
 
 
+def _render_todo_card() -> None:
+    """本月/本季度必做：按时间倒排，给出截止日、剩余天数与去处理入口。"""
+    try:
+        from engine.tax_calendar import upcoming_deadlines
+        from engine.calendar_export import build_ics
+
+        deadlines = [
+            item for item in upcoming_deadlines(lookahead_days=45, include_overdue=True)
+            if not item.get("is_overdue") or int(item.get("days_left") or 0) >= -30
+        ]
+    except Exception:  # noqa: BLE001 - 日历不可用不影响驾驶舱
+        return
+    if not deadlines:
+        return
+    urgent = [item for item in deadlines if str(item.get("level")) in ("overdue", "urgent")]
+    soon = [item for item in deadlines if str(item.get("level")) == "soon"]
+    with st.container(border=True):
+        head_cols = st.columns([5, 2])
+        with head_cols[0]:
+            st.markdown("#### ✅ 本月 / 本季度必做")
+            if urgent:
+                st.warning(
+                    f"有 {len(urgent)} 项已到期/即将到期：" +
+                    "、".join(str(item.get("name")) for item in urgent[:3]) +
+                    (" 等" if len(urgent) > 3 else ""),
+                    icon="⏰",
+                )
+            elif soon:
+                st.warning(f"有 {len(soon)} 项将在 7 天内到期，建议提前处理。", icon="⏳")
+            else:
+                st.caption("以下是最近 45 天内的申报事项；完成后在对应页面确认状态。")
+        with head_cols[1]:
+            try:
+                ics = build_ics(deadlines)
+                st.download_button(
+                    "📅 导出到手机日历",
+                    data=ics.encode("utf-8"),
+                    file_name="智小税_申报日历.ics",
+                    mime="text/calendar",
+                    key="dashboard_ics_download",
+                    width="stretch",
+                    help="导入手机/电脑日历后，可由系统日历提前提醒（需保持日历同步）",
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.caption(f"日历导出不可用：{exc}")
+        for index, item in enumerate(deadlines[:6]):
+            status = str(item.get("label") or "")
+            level = str(item.get("level") or "normal")
+            icon = "🔴" if level == "overdue" else ("🟠" if level == "urgent" else ("🟡" if level == "soon" else "🟢"))
+            row = st.columns([5, 2, 2])
+            with row[0]:
+                st.markdown(f"**{icon} {item.get('name')}**")
+                st.caption(f"税款所属期：{item.get('tax_period_label') or item.get('tax_period') or '—'}")
+            with row[1]:
+                st.caption(f"截止：{item.get('due_date')}")
+                st.caption(status)
+            with row[2]:
+                page = nav.PAGE_PAYROLL if item.get("key") == "personal_tax_monthly" else nav.PAGE_FILING
+                if st.button("去处理 →", key=f"todo_goto_{item.get('key')}_{index}", width="stretch"):
+                    nav.goto(page)
+        if len(deadlines) > 6:
+            st.caption(f"还有 {len(deadlines) - 6} 项未展示；可导出日历或到「📋 申报填报」查看。")
+        st.caption(
+            "提醒说明：本系统只在打开时提示，不会在关闭后推送；"
+            "建议点「导出到手机日历」，让手机系统日历提前 3 天提醒。"
+        )
+
+
 def _render_zero_and_late_card(data: dict) -> None:
     """零申报提醒 + 滞纳金试算（只提示风险，不制造恐慌）。"""
     with st.container(border=True):
@@ -626,6 +694,7 @@ def render() -> None:
     period_label = ledger_api.quarter_label(data.get("period") or current_quarter())
 
     _render_onboarding_banner()
+    _render_todo_card()
     _render_hr_anomaly_card()
     ui.section("📊 本季度核心指标", f"税款所属期：{period_label}（金额单位：元）")
     ui.metric_row(

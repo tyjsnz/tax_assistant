@@ -103,14 +103,24 @@ def _render_sidebar() -> str:
     with st.sidebar:
         st.markdown(f"### 🧾 {config.APP_SHORT_NAME}")
         st.caption("小规模纳税人自主税务填报系统")
-        # 必须在 radio 实例化之前消费页面内「快捷入口」的跳转请求
+        # 必须在导航渲染之前消费页面内「快捷入口」的跳转请求
         nav.resolve_goto()
-        page = st.radio(
-            "功能导航",
-            nav.PAGE_LABELS,
-            key=nav.NAV_KEY,
-            label_visibility="collapsed",
-        )
+        current = str(st.session_state.get(nav.NAV_KEY) or nav.PAGE_DASHBOARD)
+        if current not in nav.PAGE_MODULES:
+            current = nav.PAGE_DASHBOARD
+        # 按「开始 → 日常 → 必做 → 季度/年度 → 异常 → 学习 → 系统」分组，
+        # 避免 15 个平铺菜单给新手造成"不知道从哪下手"。
+        for group_label, group_pages in nav.NAV_GROUPS:
+            st.caption(group_label)
+            for page_label in group_pages:
+                if st.button(
+                    page_label,
+                    key=f"nav_btn_{page_label}",
+                    width="stretch",
+                    type="primary" if page_label == current else "secondary",
+                ):
+                    st.session_state[nav.NAV_KEY] = page_label
+                    st.rerun()
         st.divider()
         try:
             _render_company_switcher()
@@ -130,7 +140,7 @@ def _render_sidebar() -> str:
             quarter_text = f"{config.today().year} 年"
         st.caption(f"📅 当前季度：{quarter_text}")
         st.caption(f"版本 v{config.APP_VERSION} · 数据仅存本地")
-    return page or nav.PAGE_DASHBOARD
+    return current or nav.PAGE_DASHBOARD
 
 
 def _render_page(page: str) -> None:

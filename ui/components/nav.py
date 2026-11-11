@@ -46,6 +46,17 @@ PAGES: list[tuple[str, str]] = [
     (PAGE_SETTINGS, "ui.views.settings"),
 ]
 
+#: 侧边栏分组（按重要程度/使用频率）
+NAV_GROUPS: list[tuple[str, list[str]]] = [
+    ("开始", [PAGE_DASHBOARD, PAGE_ONBOARDING]),
+    ("日常记账", [PAGE_LEDGER, PAGE_INGEST, PAGE_INVOICE]),
+    ("每月 / 每季必做", [PAGE_PAYROLL, PAGE_FILING, PAGE_CHECK]),
+    ("季度 / 年度", [PAGE_CALCULATOR, PAGE_SETTLEMENT]),
+    ("异常处理", [PAGE_CORRECTION]),
+    ("学习与帮助", [PAGE_GUIDE, PAGE_POLICIES, PAGE_ASSISTANT]),
+    ("系统", [PAGE_SETTINGS]),
+]
+
 PAGE_LABELS: list[str] = [label for label, _ in PAGES]
 PAGE_MODULES: dict[str, str] = dict(PAGES)
 
