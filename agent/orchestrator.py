@@ -408,6 +408,22 @@ def _compose_local(intent: str, text: str, route: dict[str, Any], result: dict[s
             return f"计算失败：{result['error']}"
         return "请提供计算的期间或金额信息，我会调用确定性算税引擎计算。"
 
+    if intent == "payroll_correction":
+        if result and result.get("ok"):
+            return result["display"]
+        if result and result.get("error"):
+            return f"离职纠错扫描失败：{result['error']}"
+        return (
+            "这个问题可以这样处理：\n"
+            "1. **先停申报**：扣缴端「人员信息采集」把员工状态改为「离职」并填写离职日期；\n"
+            "2. **再更正**：综合所得申报 → 正常工资薪金 → 选择误申报月份 → 更正申报 → 删除该员工或收入改 0，"
+            "并按月份顺序逐月更正；\n"
+            "3. **联动处理**：多缴申请退（抵）税，少缴补税；企业所得税做纳税调增；社保减员退费；账务红冲；\n"
+            "4. **留痕**：保存员工申诉撤销截图、更正记录、退税/补税凭证与情况说明。\n\n"
+            "⚠️ 员工撤销个税 APP 申诉 ≠ 申报已更正，错误数据仍必须更正。"
+            "你可以告诉我员工姓名，我会扫描公司数据并生成更正测算。"
+        )
+
     if intent == "iit":
         if result and result.get("ok"):
             return _iit_reply(result["data"])

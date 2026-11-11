@@ -33,6 +33,7 @@ TOOL_NAMES: list[str] = [
     "calc_stamp_tax",
     "calc_disability_fund",
     "calc_iit",
+    "payroll_correction",
     "add_income",
     "add_expense",
     "query_ledger",
@@ -696,6 +697,79 @@ def _tool_calc_iit(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # =============================================================================
+# 工具实现：离职与申报纠错
+# =============================================================================
+def _tool_payroll_correction(args: dict[str, Any]) -> dict[str, Any]:
+    """扫描离职后仍申报的工资，或测算单个员工的更正方案。"""
+    from ledger import corrections
+
+    employee = str(args.get("employee") or "").strip()
+    scan = corrections.scan_departed_overpayments()
+    items = scan.get("items") or []
+    if not items:
+        data = {**scan, "plan": None}
+        display = (
+            "【离职与申报纠错扫描】\n"
+            "- 未发现「已离职但离职后仍有工资/个税申报」的记录。\n"
+            "- 如果员工在个税 APP 申诉，请先核实离职日期与银行流水；确认无误后在扣缴端异议处理中说明。\n"
+            "- 若已存在误申报，可告诉我员工姓名，我帮你生成更正测算与操作步骤。\n"
+            + DISCLAIMER
+        )
+        return _ok(data, display)
+
+    if employee:
+        target = next(
+            (item for item in items if employee == item.get("employee_id") or employee in str(item.get("employee_name") or "")),
+            None,
+        )
+        if not target:
+            names = "、".join(item.get("employee_name", "") for item in items)
+            raise ValueError(f"未在异常名单中找到「{employee}」。当前异常员工：{names}。")
+        plan = corrections.build_correction_plan(str(target["employee_id"]))
+        totals = plan.get("totals") or {}
+        lines = [
+            f"【离职多申报更正方案 · {plan.get('employee_name')}】",
+            f"- 离职日期：{plan.get('leave_date')}；需更正月份：{'、'.join(plan.get('removed_periods') or []) or '无'}",
+            f"- 原申报收入 {yuan(totals.get('original_income'))} → 更正后 {yuan(totals.get('corrected_income'))} 元",
+            f"- 原已预扣个税 {yuan(totals.get('original_tax'))} → 更正后应预扣 {yuan(totals.get('corrected_tax'))} 元",
+            f"- 预计多缴（可退）：{yuan(totals.get('tax_refund'))} 元；预计少缴（需补）：{yuan(totals.get('tax_payable'))} 元",
+            f"- 企业所得税影响：小微 5% 约 {yuan((plan.get('cit_impact') or {}).get('small_low_profit_tax'))} 元；"
+            f"一般 25% 约 {yuan((plan.get('cit_impact') or {}).get('standard_tax'))} 元",
+            "",
+            "操作步骤（照着做）：",
+        ]
+        for step in (plan.get("steps") or [])[:6]:
+            lines.append(f"  {step}")
+        lines.append("完整九步操作、逐月明细与留痕清单，可在「员工与工资 → 离职与纠错」导出 Excel/PDF 操作单。")
+        lines.append(DISCLAIMER)
+        return _ok({**scan, "plan": plan}, "\n".join(lines))
+
+    summary = scan.get("summary") or {}
+    lines = [
+        "【离职与申报纠错扫描】",
+        f"- 涉及员工 {summary.get('employees', 0)} 人，需更正月份 {summary.get('months', 0)} 个，"
+        f"涉及工资 {yuan(summary.get('income'))} 元，已预扣个税 {yuan(summary.get('tax'))} 元。",
+    ]
+    for item in items[:8]:
+        lines.append(
+            f"- {item.get('employee_name')}（离职 {item.get('leave_date')}）："
+            f"{'、'.join(item.get('periods') or [])}，工资 {yuan(item.get('income_total'))} 元"
+        )
+    lines.extend(
+        [
+            "",
+            "下一步（零基础 3 步）：",
+            "1. 先停申报：扣缴端人员信息采集把员工状态改为「离职」并填离职日期；",
+            "2. 告诉我员工姓名，我生成逐月更正测算与《更正操作单》；",
+            "3. 照操作单在扣缴端逐月更正，再处理退税/补税、企业所得税调增与账务调整。",
+            "注意：员工撤销个税 APP 申诉不等于数据已更正，错误申报仍必须更正。",
+            DISCLAIMER,
+        ]
+    )
+    return _ok({**scan, "plan": None}, "\n".join(lines))
+
+
+# =============================================================================
 # 工具实现：记账与台账
 # =============================================================================
 def _tool_add_income(args: dict[str, Any]) -> dict[str, Any]:
@@ -1348,6 +1422,20 @@ _TOOL_DEFS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "payroll_correction",
+        "description": (
+            "扫描公司「已离职但离职后月份仍在申报工资/个税」的记录，并生成更正测算："
+            "按累计预扣法逐月重算、多缴（可退）/少缴（需补）个税、企业所得税调增、操作步骤。"
+            "可传 employee（姓名或编号）查看单个员工。"
+        ),
+        "parameters": _schema(
+            {
+                "employee": {"type": "string", "description": "可选：员工姓名或编号；不传则扫描全公司"},
+            },
+            [],
+        ),
+    },
+    {
         "name": "add_income",
         "description": "记一笔收入到收入台账，并自动生成会计分录。",
         "parameters": _schema(
@@ -1468,6 +1556,7 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "calc_rd_deduction": _tool_calc_rd_deduction,
     "calc_stamp_tax": _tool_calc_stamp_tax,
     "calc_iit": _tool_calc_iit,
+    "payroll_correction": _tool_payroll_correction,
     "calc_disability_fund": _tool_calc_disability_fund,
     "add_income": _tool_add_income,
     "add_expense": _tool_add_expense,

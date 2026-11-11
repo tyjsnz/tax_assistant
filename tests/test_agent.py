@@ -470,15 +470,16 @@ def test_detect_intent_llm_failure_falls_back(monkeypatch):
 def test_tool_specs_and_names():
     specs = tool_specs()
     assert [spec["function"]["name"] for spec in specs] == TOOL_NAMES
-    assert len(TOOL_NAMES) == 16
+    assert len(TOOL_NAMES) == 17
     assert "calc_iit" in TOOL_NAMES
     assert "calc_cit_settlement" in TOOL_NAMES
     assert "calc_disability_fund" in TOOL_NAMES
+    assert "payroll_correction" in TOOL_NAMES
     for spec in specs:
         assert spec["type"] == "function"
         assert spec["function"]["description"]
         assert spec["function"]["parameters"]["type"] == "object"
-    assert len(describe_tools()) == 16
+    assert len(describe_tools()) == 17
 
 
 def test_call_tool_unknown_and_missing_params():
@@ -1015,3 +1016,22 @@ def test_call_calc_disability_fund_tool():
     exempt = call_tool("calc_disability_fund", {"employees": 30, "average_wage": 80_000})
     assert exempt["ok"] is True
     assert exempt["data"]["payable"] == 0
+
+
+def test_payroll_correction_tool_and_intent():
+    result = call_tool("payroll_correction", {})
+    assert result["ok"] is True
+    assert "离职" in result["display"]
+    assert "个税" in result["display"]
+    assert result["data"]["disclaimer"]
+
+    text = "员工离职后还在申报个税，员工在个税APP申诉了又撤销，怎么处理？"
+    intent = detect_intent(text)
+    assert intent["intent"] == "payroll_correction"
+    routed = route(text)
+    assert routed["tool"] == "payroll_correction"
+
+    reply = orchestrator.local_reply(text)
+    assert reply["intent"] == "payroll_correction"
+    assert "更正" in reply["reply"]
+    assert reply["used_llm"] is False

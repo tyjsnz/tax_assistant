@@ -456,6 +456,7 @@ def cmd_correction_plan(args: argparse.Namespace) -> int:
         return 1
     plan = corrections.build_correction_plan(args.employee, late_fee_days=args.late_fee_days)
     path = corrections.export_correction_plan(plan, args.out or None)
+    pdf_path = corrections.export_correction_plan_pdf(plan, args.pdf or None) if args.pdf else None
     totals = plan["totals"]
     print(f"\n🧯 离职多申报更正方案：{plan['employee_name']}（离职日期 {plan['leave_date']}）")
     print("-" * 96)
@@ -471,6 +472,8 @@ def cmd_correction_plan(args: argparse.Namespace) -> int:
     for warning in plan["warnings"]:
         print(f"  ⚠️ {warning}")
     print(f"\n📦 已导出操作单：{path}")
+    if pdf_path:
+        print(f"📄 PDF：{pdf_path}")
     print(f"  {config.DISCLAIMER}")
     return 0
 
@@ -1072,7 +1075,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_correction = sub.add_parser("correction-plan", help="生成离职多申报更正方案/操作单")
     p_correction.add_argument("--employee", default=None, help="员工编号；与 --all 二选一")
     p_correction.add_argument("--all", action="store_true", help="为所有异常员工批量生成")
-    p_correction.add_argument("--out", default=None, help="单人操作单导出路径")
+    p_correction.add_argument("--out", default=None, help="单人操作单导出路径（Excel）")
+    p_correction.add_argument("--pdf", default=None, help="同时导出 PDF 操作单路径")
     p_correction.add_argument("--out-dir", default=None, help="批量导出目录")
     p_correction.add_argument("--late-fee-days", type=int, default=0, help="需补税时估算滞纳金天数")
     p_correction.add_argument("--json", action="store_true")

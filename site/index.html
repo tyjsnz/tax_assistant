@@ -198,7 +198,7 @@
     </a>
     <nav class="nav-links">
       <a href="#pain">为什么</a><a href="#flow">怎么用</a><a href="#features">功能</a>
-      <a href="#ai">AI 助手</a><a href="#shots">界面</a><a href="#download">下载</a>
+      <a href="#ai">AI 助手</a><a href="#correction">离职纠错</a><a href="#shots">界面</a><a href="#download">下载</a>
       <a href="https://github.com/tyjsnz/tax_assistant" target="_blank" rel="noopener">GitHub ↗</a>
     </nav>
     <div class="nav-cta">
@@ -221,7 +221,7 @@
           AI 助手一步步带你完成小规模纳税人的季度报税。数据只存在你自己的电脑里。
         </p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="#download">⬇ 下载安装包 <span class="muted" style="font-weight:500;font-size:12px">v1.8.0</span></a>
+          <a class="btn btn-primary" href="#download">⬇ 下载安装包 <span class="muted" style="font-weight:500;font-size:12px">v1.9.0</span></a>
           <a class="btn btn-ghost" href="/app/" target="_blank" rel="noopener">🚀 在线体验</a>
         </div>
         <div class="trust">
@@ -307,6 +307,7 @@
         <div class="card feat reveal"><div class="fic">📚</div><div><h3>政策知识库</h3><p>政策文号、生效日期、税率表随期间切换，过期自动提醒核验。</p></div></div>
         <div class="card feat reveal"><div class="fic">🛡️</div><div><h3>本地优先 · 开源</h3><p>数据存本机 CSV，API Key 不入库；源码开源可审计、可二次开发。</p></div></div>
         <div class="card feat reveal"><div class="fic">📄</div><div><h3>工商年报 / 残保金</h3><p>年度数据准备、残保金分档测算（30 人以下免征）、申报提醒。</p></div></div>
+        <div class="card feat reveal"><div class="fic">🧯</div><div><h3>离职与申报纠错</h3><p>扫描离职后仍申报的工资，逐月重算更正、退税/补税测算、生成可打印操作单与申诉台账。</p></div></div>
       </div>
     </div>
   </section>
@@ -339,6 +340,28 @@
     </div>
   </section>
 
+
+  <section id="correction">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="tag">离职纠错 · 新手也能照着做</span>
+        <h2>离职员工被多申报？<span class="grad-text">3 步自己处理</span></h2>
+        <p>员工离职后忘记停工资、离职后还在申报个税，员工在个税 APP 投诉又撤销——系统帮你扫描、算清差额、生成操作单，照着在扣缴端点就行。</p>
+      </div>
+      <div class="ai-grid">
+        <div class="reveal">
+          <img src="assets/shots/34_p1e_correction_plan.jpg" alt="离职多申报更正方案" style="width:100%;border-radius:20px;border:1px solid rgba(255,255,255,.14);box-shadow:0 30px 80px rgba(0,0,0,.45)" />
+        </div>
+        <div class="reveal">
+          <div class="card" style="margin-bottom:14px"><div class="icon">🔍</div><h3>第 1 步：先扫描</h3><p>自动找出“已离职但离职后月份仍有工资/个税申报”的员工，列出月份、收入、已预扣税额。</p></div>
+          <div class="card" style="margin-bottom:14px"><div class="icon">🧮</div><h3>第 2 步：算清差额</h3><p>按累计预扣法逐月重算：多缴可退多少、少缴需补多少，企业所得税与社保影响一并估算。</p></div>
+          <div class="card"><div class="icon">📄</div><h3>第 3 步：照单操作</h3><p>导出《更正操作单》（Excel / PDF），含扣缴端九步操作、退税路径、账务与留痕清单；申诉登记也在一起。</p></div>
+          <p style="color:var(--muted);font-size:13.5px;margin-top:16px">⚠️ 员工撤销申诉 ≠ 申报已更正。系统只做测算与操作指引，实际更正仍在自然人电子税务局（扣缴端）完成。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="shots">
     <div class="wrap">
       <div class="sec-head reveal">
@@ -353,6 +376,7 @@
         <button class="g-btn" data-src="assets/shots/04_filing.jpg" data-cap="申报填报：逐栏展示金额、来源与口径，校验勾稽关系后导出 Excel">📋 申报填报</button>
         <button class="g-btn" data-src="assets/shots/25_p1b_payroll.jpg" data-cap="工资个税：累计预扣法自动算税，确认即生成工资凭证">👥 工资个税</button>
         <button class="g-btn" data-src="assets/shots/28_p1c_settlement_annual.jpg" data-cap="汇算清缴：年度数据、纳税调整、亏损弥补一目了然">📊 汇算清缴</button>
+        <button class="g-btn" data-src="assets/shots/34_p1e_correction_plan.jpg" data-cap="离职与纠错：扫描离职后多申报，逐月重算并生成可打印操作单">🧯 离职纠错</button>
       </div>
       <div class="gallery reveal">
         <img id="gallery-img" src="assets/shots/01_dashboard.jpg" alt="智小税界面预览" />
@@ -370,19 +394,19 @@
           <p>解压即用，无需数据库、无需服务器。首次启动自动创建空白账套，也可一键载入演示数据体验完整流程。</p>
           <div class="os-pills"><span class="os-pill">🪟 Windows 10/11</span><span class="os-pill">🍎 macOS</span><span class="os-pill">🐧 Linux / Docker</span><span class="os-pill">Python 3.11+</span></div>
           <div style="display:flex;gap:12px;flex-wrap:wrap;margin:26px 0 18px">
-            <a class="btn btn-primary" href="download/zhixiaoshui-v1.8.0.zip" download>⬇ 下载 v1.8.0（zip · 约 1 MB）</a>
-            <a class="btn btn-ghost" href="download/zhixiaoshui-v1.8.0.tar.gz" download>tar.gz</a>
+            <a class="btn btn-primary" href="download/zhixiaoshui-v1.9.0.zip" download>⬇ 下载 v1.9.0（zip · 约 1 MB）</a>
+            <a class="btn btn-ghost" href="download/zhixiaoshui-v1.9.0.tar.gz" download>tar.gz</a>
           </div>
           <div class="dl-meta">
-            校验（SHA-256）：<span class="hash">1a4063da3145c9b26097e43e41275088ef656ffde7da18ee3df381d65813ff0c</span><br/>
-            许可证 Apache-2.0 · 版本 v1.8.0 · 维护者 snz &lt;274043505@qq.com&gt;
+            校验（SHA-256）：<span class="hash">fcb79e80f448fc2238e4aa2f5162714438421e63763cb24ba5d1552132622073</span><br/>
+            许可证 Apache-2.0 · 版本 v1.9.0 · 维护者 snz &lt;274043505@qq.com&gt;
           </div>
         </div>
         <div>
           <div class="steps-box">
-            <button class="copy-btn" data-copy="unzip zhixiaoshui-v1.8.0.zip -d zhixiaoshui&#10;cd zhixiaoshui&#10;bash start.sh   # Windows 双击 start.bat">复制命令</button>
+            <button class="copy-btn" data-copy="unzip zhixiaoshui-v1.9.0.zip -d zhixiaoshui&#10;cd zhixiaoshui&#10;bash start.sh   # Windows 双击 start.bat">复制命令</button>
             <h4>三步启动 · macOS / Linux</h4>
-            <div class="code">unzip zhixiaoshui-v1.8.0.zip -d zhixiaoshui
+            <div class="code">unzip zhixiaoshui-v1.9.0.zip -d zhixiaoshui
 cd zhixiaoshui
 bash start.sh
 

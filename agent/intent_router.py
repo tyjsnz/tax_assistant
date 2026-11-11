@@ -33,6 +33,7 @@ INTENTS: dict[str, str] = {
     "calc_rd": "研发费用归集与加计扣除",
     "calc_stamp_tax": "印花税计算",
     "iit": "个人所得税扣缴（工资薪金累计预扣）",
+    "payroll_correction": "离职后多申报工资与个税异议申诉处理",
     "income": "收入记账",
     "expense": "费用记账",
     "journal": "会计分录生成",
@@ -45,6 +46,12 @@ INTENTS: dict[str, str] = {
 
 #: 规则表：``(意图, 正则列表, 关键词列表)``；列表顺序即同分时的优先级。
 _RULES: list[tuple[str, list[str], list[str]]] = [
+    (
+        "payroll_correction",
+        [r"离职.{0,12}(?:申报|工资|个税|多报|报税|停报|减员|还在报)", r"(?:个税|个人所得税).{0,8}(?:申诉|投诉)",
+         r"撤销申诉", r"员工.{0,6}(?:申诉|投诉)", r"多申报.{0,8}(?:个税|工资)", r"离职.{0,6}(?:还|仍).{0,4}(?:报|申报)"],
+        ["离职", "多申报", "申诉", "投诉", "撤销申诉", "个税申诉", "离职员工", "离职后", "停报", "减员"],
+    ),
     (
         "filing_check",
         [r"申报表", r"填对", r"填错", r"核对", r"比对", r"复核", r"检查.{0,4}(?:表|申报)", r"截图", r"OCR", r"扫一下"],
@@ -608,6 +615,9 @@ def _score_rules(text: str) -> list[tuple[int, str, list[str]]]:
                 hits.append(keyword)
         if is_consult and not has_amount and intent in calc_intents:
             score = max(0, score - 3)
+        if intent == "payroll_correction" and re.search(r"离职|申诉|投诉|多申报|撤销", raw):
+            score += 3
+            hits.append("domain:payroll_correction")
         if intent == "cit_settlement" and _SETTLEMENT_DOMAIN_RE.search(raw):
             # 汇算清缴 / 纳税调整等专业词是强特征，避免被「怎么算」「要交多少」误路由到增值税
             score += 3
@@ -1004,6 +1014,17 @@ def route(text: str) -> dict[str, Any]:
         elif re.search(r"季度|季", text or ""):
             arguments["period"] = engine.current_quarter(_today())
         reply_hint = "调用 calc_stamp_tax 计算合同印花税，说明六税两费减半后的应缴金额。"
+
+    elif intent == "payroll_correction":
+        tool = "payroll_correction"
+        employee = str(entities.get("client") or "").strip()
+        if employee:
+            arguments["employee"] = employee
+        reply_hint = (
+            "调用 payroll_correction 扫描「已离职但离职后仍申报工资/个税」的员工，"
+            "生成逐月更正测算（多缴/少缴个税、企业所得税调增）与扣缴端操作步骤；"
+            "强调员工撤销个税 APP 申诉不等于数据已更正。"
+        )
 
     elif intent == "iit":
         tool = "calc_iit"

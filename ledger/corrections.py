@@ -240,3 +240,120 @@ def delete_dispute(dispute_id: str) -> bool:
     if deleted:
         log_user_action("删除个税异议申诉", dispute_id)
     return deleted
+
+
+def export_correction_plan_pdf(plan: dict[str, Any], path: str | Path | None = None) -> Path:
+    """导出《离职员工多申报更正操作单》PDF（适合打印/归档/给不懂税的同事照着做）。"""
+    from xml.sax.saxutils import escape
+
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    font_name = "STSong-Light"
+    try:
+        pdfmetrics.registerFont(UnicodeCIDFont(font_name))
+    except Exception:  # noqa: BLE001 - 字体已注册或环境不支持时回退
+        font_name = "Helvetica"
+
+    employee_name = str(plan.get("employee_name") or "员工")
+    target = Path(path) if path else Path(config.EXPORT_DIR) / f"离职多申报更正操作单_{employee_name}.pdf"
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("cn-title", parent=styles["Title"], fontName=font_name, fontSize=18, leading=24, spaceAfter=6)
+    h2 = ParagraphStyle("cn-h2", parent=styles["Heading2"], fontName=font_name, fontSize=13, leading=18, spaceBefore=10, spaceAfter=6)
+    body = ParagraphStyle("cn-body", parent=styles["BodyText"], fontName=font_name, fontSize=10, leading=16)
+    small = ParagraphStyle("cn-small", parent=styles["BodyText"], fontName=font_name, fontSize=8.5, leading=13, textColor=colors.HexColor("#444444"))
+    cell = ParagraphStyle("cn-cell", parent=styles["BodyText"], fontName=font_name, fontSize=8.5, leading=12)
+
+    def p(text: Any, style=body) -> Paragraph:
+        return Paragraph(escape(str(text if text is not None else "")), style)
+
+    def money(value: Any) -> str:
+        return f"¥{float(value or 0):,.2f}"
+
+    totals = plan.get("totals") or {}
+    elements: list[Any] = [
+        Paragraph(f"离职员工多申报工资更正操作单 · {escape(employee_name)}", title_style),
+        Paragraph("本操作单由智小税自动生成：请按顺序在自然人电子税务局（扣缴端）完成更正，实际口径以税务机关为准。", small),
+        Spacer(1, 4 * mm),
+    ]
+
+    meta = [
+        [p("员工"), p(employee_name), p("离职日期"), p(plan.get("leave_date") or "")],
+        [p("保留月份"), p("、".join(plan.get("kept_periods") or []) or "无"), p("需更正月份"), p("、".join(plan.get("removed_periods") or []) or "无")],
+        [p("原申报收入"), p(money(totals.get("original_income"))), p("更正后收入"), p(money(totals.get("corrected_income")))],
+        [p("原已预扣个税"), p(money(totals.get("original_tax"))), p("更正后应预扣"), p(money(totals.get("corrected_tax")))],
+        [p("预计多缴（可退）"), p(money(totals.get("tax_refund"))), p("预计少缴（需补）"), p(money(totals.get("tax_payable")))],
+        [p("涉及多列工资"), p(money(totals.get("removed_wage_total"))), p("社保公积金个人部分退费参考"), p(money(plan.get("social_refund_reference")))],
+    ]
+    table = Table(meta, colWidths=[32 * mm, 52 * mm, 38 * mm, 52 * mm])
+    table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f3f7f5")),
+        ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#f3f7f5")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 4 * mm))
+
+    cit = plan.get("cit_impact") or {}
+    elements.append(Paragraph(
+        f"企业所得税影响估算：小微 5% 约 {money(cit.get('small_low_profit_tax'))} 元；"
+        f"一般 25% 约 {money(cit.get('standard_tax'))} 元。多列工资如已税前扣除，需做纳税调增。",
+        body,
+    ))
+    elements.append(Spacer(1, 2 * mm))
+
+    if plan.get("warnings"):
+        elements.append(Paragraph("重点提示", h2))
+        for warning in plan.get("warnings") or []:
+            elements.append(Paragraph(f"• {escape(str(warning))}", body))
+
+    elements.append(Paragraph("逐月更正明细", h2))
+    detail_rows = [[p("所属期", cell), p("处理动作", cell), p("原申报收入", cell), p("更正后收入", cell),
+                    p("原已预扣", cell), p("更正后应预扣", cell), p("差额", cell)]]
+    for row in plan.get("rows") or []:
+        detail_rows.append([
+            p(row.get("period"), cell), p(row.get("action"), cell),
+            p(money(row.get("original_income")), cell), p(money(row.get("corrected_income")), cell),
+            p(money(row.get("original_tax")), cell), p(money(row.get("corrected_tax")), cell),
+            p(money(row.get("tax_diff")), cell),
+        ])
+    detail = Table(detail_rows, colWidths=[24 * mm, 55 * mm, 26 * mm, 26 * mm, 24 * mm, 28 * mm, 22 * mm], repeatRows=1)
+    detail.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e9f4ef")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    elements.append(detail)
+
+    elements.append(Paragraph("照着做：九步操作", h2))
+    for index, step in enumerate(plan.get("steps") or [], start=1):
+        elements.append(Paragraph(f"{index}. {escape(str(step))}", body))
+        elements.append(Spacer(1, 1.2 * mm))
+
+    elements.append(Paragraph("员工申诉与留痕", h2))
+    elements.append(Paragraph(escape(str(plan.get("dispute_note") or "")), body))
+    elements.append(Paragraph(
+        "留存资料：离职证明、工资结算单、银行流水、更正申报截图、退税/补税凭证、员工申诉及撤销截图、情况说明、内部审批记录。",
+        body,
+    ))
+    elements.append(Spacer(1, 4 * mm))
+    elements.append(Paragraph(escape(str(config.DISCLAIMER)), small))
+
+    doc = SimpleDocTemplate(
+        str(target), pagesize=A4,
+        leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm,
+        title=f"离职员工多申报更正操作单_{employee_name}",
+        author="智小税",
+    )
+    doc.build(elements)
+    return target

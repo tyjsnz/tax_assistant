@@ -1072,6 +1072,14 @@ def _render_correction_tab() -> None:
         "员工离职后仍做工资/申报个税时：先停申报，再逐月更正；员工个税 APP 撤销申诉不等于数据已更正。"
         "本页只做扫描、测算与操作单，实际更正请在自然人电子税务局（扣缴端）完成。"
     )
+    st.markdown(
+        """
+        **零基础 3 步走**
+        1. **先看扫描结果**：下方列出“离职后还在申报”的员工与月份；没有记录说明暂时不用处理。
+        2. **点「生成更正方案」**：系统自动算出差额（多缴可退/少缴需补），并生成《更正操作单》。
+        3. **照着操作单做**：打开扣缴端，按“九步操作”逐月更正；退税/补税、企业所得税与账务按提示处理。
+        """
+    )
     try:
         from ledger import corrections, employees as employee_api
     except Exception as exc:  # noqa: BLE001
@@ -1158,18 +1166,33 @@ def _render_correction_tab() -> None:
                 st.markdown(f"{index}. {step}")
         for warning in plan.get("warnings") or []:
             st.warning(warning)
-        try:
-            path = corrections.export_correction_plan(plan)
-            st.download_button(
-                "📊 导出《更正操作单》Excel",
-                data=Path(path).read_bytes(),
-                file_name=Path(path).name,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="correction_download",
-                width="stretch",
-            )
-        except Exception as exc:  # noqa: BLE001
-            st.warning(f"导出失败：{exc}")
+        download_cols = st.columns(2)
+        with download_cols[0]:
+            try:
+                path = corrections.export_correction_plan(plan)
+                st.download_button(
+                    "📊 导出《更正操作单》Excel",
+                    data=Path(path).read_bytes(),
+                    file_name=Path(path).name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="correction_download",
+                    width="stretch",
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.warning(f"Excel 导出失败：{exc}")
+        with download_cols[1]:
+            try:
+                pdf_path = corrections.export_correction_plan_pdf(plan)
+                st.download_button(
+                    "📄 导出 PDF 操作单（可打印）",
+                    data=Path(pdf_path).read_bytes(),
+                    file_name=Path(pdf_path).name,
+                    mime="application/pdf",
+                    key="correction_pdf_download",
+                    width="stretch",
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.warning(f"PDF 导出失败：{exc}")
 
     st.divider()
     ui.section("个税异议申诉台账", "记录员工在个税 APP 的申诉、撤销、沟通与更正闭环")
