@@ -112,6 +112,121 @@ def _render_check_result(result: dict) -> None:
     theme.disclaimer(result.get("disclaimer"))
 
 
+def _render_qa_knowledge_section() -> None:
+    """问答知识库管理（v1.15）：候选审核发布 + 检索状态。"""
+    st.markdown("---")
+    ui.section(
+        "🗂️ 我的问答知识库",
+        "从历史问答沉淀的可复用答案：默认进入「候选」，人工「发布」后才参与回答与上下文注入；政策版本变化后自动失效。",
+    )
+    try:
+        from ledger import qa as qa_store
+        from ledger import qa_knowledge
+
+        stats = qa_knowledge.stats()
+        candidates = qa_knowledge.list_knowledge("候选")
+        published = qa_knowledge.list_knowledge("已发布")
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"问答知识库不可用：{exc}")
+        return
+    counts = stats.get("counts") or {}
+    ui.metric_row(
+        [
+            {"label": "知识条目", "value": f"{stats.get('total', 0)} 条"},
+            {"label": "待审核候选", "value": f"{counts.get('候选', 0)} 条"},
+            {"label": "已发布", "value": f"{counts.get('已发布', 0)} 条"},
+            {"label": "知识命中", "value": f"{stats.get('hits', 0)} 次"},
+        ],
+        columns=4,
+    )
+
+    filter_cols = st.columns([2, 3, 2])
+    with filter_cols[0]:
+        status_filter = st.selectbox(
+            "状态", ["全部", *qa_knowledge.STATUSES], key="qa_kb_status_filter"
+        )
+    with filter_cols[1]:
+        keyword = st.text_input("关键词", key="qa_kb_keyword", placeholder="问题或回答关键词")
+    with filter_cols[2]:
+        st.write("")
+        if st.button("🔄 刷新", key="qa_kb_refresh", width="stretch"):
+            st.rerun()
+    rows = qa_knowledge.list_knowledge(None if status_filter == "全部" else status_filter, keyword=keyword)
+    if rows:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "编号": row.get("id"),
+                        "状态": row.get("status"),
+                        "问题": str(row.get("question") or "")[:60],
+                        "回答": str(row.get("answer") or "")[:80],
+                        "命中": row.get("hit_count"),
+                        "来源问答": row.get("source_qa_id"),
+                    }
+                    for row in rows
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        options = {
+            f"{row.get('question','')[:40]}（{row.get('id')} · {row.get('status')}）": row for row in rows
+        }
+        selected = st.selectbox("选择知识条目", list(options), key="qa_kb_selected")
+        entry = options[selected]
+        action_cols = st.columns(3)
+        with action_cols[0]:
+            if st.button("✅ 发布", key="qa_kb_publish", width="stretch"):
+                try:
+                    qa_knowledge.set_status(str(entry.get("id")), "已发布")
+                    st.success("已发布，将参与高置信回答与上下文注入。")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"发布失败：{exc}")
+        with action_cols[1]:
+            if st.button("🚫 驳回", key="qa_kb_reject", width="stretch"):
+                try:
+                    qa_knowledge.set_status(str(entry.get("id")), "已驳回")
+                    st.success("已驳回，不再参与回答。")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"驳回失败：{exc}")
+        with action_cols[2]:
+            if st.button("⏳ 标记过期", key="qa_kb_expire", width="stretch"):
+                try:
+                    qa_knowledge.set_status(str(entry.get("id")), "已过期")
+                    st.success("已标记过期，不再参与回答。")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"标记失败：{exc}")
+    else:
+        st.info("暂无符合条件的知识条目。")
+
+    with st.expander("➕ 从最近问答中存为候选", expanded=False):
+        try:
+            recent = qa_store.list_recent(20)
+        except Exception:  # noqa: BLE001
+            recent = []
+        existing = {str(item.get("normalized") or "") for item in qa_knowledge.list_knowledge(None)}
+        choices = {
+            f"{str(item.get('question') or '')[:50]}（{item.get('created_at') or ''}）": item
+            for item in recent
+            if str(item.get("normalized") or "") not in existing
+        }
+        if not choices:
+            st.caption("最近没有新的问答可沉淀（或都已存在知识库中）。")
+        else:
+            selected_qa = st.selectbox("问答记录", list(choices), key="qa_kb_source_qa")
+            if st.button("📌 存为候选知识", key="qa_kb_from_qa", type="primary", width="stretch"):
+                try:
+                    record = qa_knowledge.promote_from_history(str(choices[selected_qa].get("id")))
+                    st.success(f"已存为候选知识 {record.get('id')}，请在上方审核发布。")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"保存失败：{exc}")
+
+
 def render() -> None:
     """渲染政策知识库页。"""
     ui.page_header(
@@ -205,3 +320,4 @@ def render() -> None:
     else:
         st.caption("点击「检查政策时效」后展示检查结果。")
         theme.disclaimer()
+    _render_qa_knowledge_section()

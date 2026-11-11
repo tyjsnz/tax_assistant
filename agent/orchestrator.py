@@ -683,8 +683,15 @@ def _tool_message(result: dict[str, Any]) -> str:
     return text
 
 
-def _build_messages(history: list[dict[str, Any]] | None, user_text: str) -> list[dict[str, Any]]:
+def _build_messages(
+    history: list[dict[str, Any]] | None,
+    user_text: str,
+    *,
+    extra_context: str = "",
+) -> list[dict[str, Any]]:
     system = build_system_prompt() + "\n\n" + build_context()
+    if extra_context:
+        system += "\n\n" + extra_context
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     messages.extend(_sanitize_history(history))
     messages.append({"role": "user", "content": user_text})
@@ -869,6 +876,34 @@ def run_turn_stream(
         }
         return
 
+    # ①' 已审核问答知识库：高置信直接本地回答；中置信注入 LLM 上下文
+    kb_context = ""
+    try:
+        from ledger import qa_knowledge
+
+        kb_hits = qa_knowledge.search(text)
+        best = kb_hits[0] if kb_hits else None
+        if best and float(best.get("score") or 0) >= qa_knowledge.HIGH_CONFIDENCE:
+            qa_knowledge.record_hit(str(best.get("id")))
+            reply = _ensure_disclaimer(str(best.get("answer") or ""))
+            qa_record = None
+            try:
+                qa_record = qa_store.log_qa(
+                    text, reply, intent=intent, source="knowledge",
+                    tool_calls=[{"name": "qa_knowledge", "id": str(best.get("id"))}],
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            qa_id = str((qa_record or {}).get("id") or "")
+            yield {"type": "meta", "source": "knowledge", "intent": intent, "qa_id": qa_id}
+            yield {"type": "text", "text": reply}
+            yield {"type": "done", "reply": reply, "source": "knowledge", "intent": intent, "qa_id": qa_id,
+                   "tool_calls": [{"name": "qa_knowledge", "id": str(best.get("id"))}]}
+            return
+        kb_context = qa_knowledge.format_context(kb_hits)
+    except Exception:  # noqa: BLE001 - 知识库不可用不影响回答
+        kb_context = ""
+
     tool_calls_record: list[dict[str, Any]] = []
     # ② 本地优先：确定性工具/规则能答的直接本地回答
     if tool_name and intent in LOCAL_FIRST_INTENTS:
@@ -910,7 +945,7 @@ def run_turn_stream(
         return
 
     # ④ LLM：真实 SSE 流式
-    messages = _build_messages(history, text)
+    messages = _build_messages(history, text, extra_context=kb_context)
     yield {"type": "meta", "source": "llm", "intent": intent, "model": client.model}
     chunks: list[str] = []
     error_text = ""

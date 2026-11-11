@@ -590,6 +590,27 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("updated_at", "str", "更新时间"),
         ],
     },
+    # 已审核问答知识库（v1.15）
+    "qa_knowledge": {
+        "file": "qa_knowledge.csv",
+        "prefix": "QK",
+        "label": "问答知识库",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("question", "str", "问题"),
+            _col("normalized", "str", "规范化问题"),
+            _col("answer", "str", "回答"),
+            _col("intent", "str", "意图"),
+            _col("status", "str", "状态"),
+            _col("scope", "str", "范围"),
+            _col("source_qa_id", "str", "来源问答"),
+            _col("policy_version", "str", "政策版本"),
+            _col("note", "str", "备注"),
+            _col("hit_count", "int", "命中次数"),
+            _col("created_at", "str", "创建时间"),
+            _col("updated_at", "str", "更新时间"),
+        ],
+    },
     # 会计期间（月结/季结状态机，P0-3）
     "periods": {
         "file": "periods.csv",

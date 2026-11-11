@@ -1081,3 +1081,14 @@ def test_stream_write_intent_executes_tool_and_skips_cache():
     # 第二次同样指令仍应执行（不能命中缓存跳过记账）
     list(orchestrator.run_turn_stream(text))
     assert store.table("income").count() == before + 2
+
+
+def test_stream_uses_published_qa_knowledge():
+    from ledger import qa_knowledge
+
+    question = "公司离职员工个税申诉撤销后还需要更正吗？"
+    answer = "需要：撤销申诉不等于更正申报，仍需逐月更正。"
+    qa_knowledge.add_knowledge(question, answer, intent="payroll_correction", status="已发布")
+    events = list(orchestrator.run_turn_stream(question))
+    assert events[0]["source"] == "knowledge"
+    assert answer in events[-1]["reply"]

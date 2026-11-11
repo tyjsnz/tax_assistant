@@ -104,7 +104,7 @@ def _render_feedback(qa_id: str) -> None:
         current = str(record.get("feedback") or "")
     except Exception:  # noqa: BLE001
         current = ""
-    cols = st.columns([1, 1, 6])
+    cols = st.columns([1, 1, 1, 5])
     with cols[0]:
         if st.button("👍", key=f"qa_like_{qa_id}", help="有帮助，继续复用该回答"):
             from ledger import qa as qa_store
@@ -118,6 +118,15 @@ def _render_feedback(qa_id: str) -> None:
             qa_store.set_feedback(qa_id, "踩")
             st.rerun()
     with cols[2]:
+        if st.button("📌 存为知识", key=f"qa_save_{qa_id}", help="转为候选知识，在「政策知识库」审核发布"):
+            try:
+                from ledger import qa_knowledge
+
+                record = qa_knowledge.promote_from_history(qa_id)
+                st.success(f"已存为候选知识 {record.get('id')}，可到「📚 政策知识库」审核发布。")
+            except Exception as exc:  # noqa: BLE001
+                st.warning(f"保存失败：{exc}")
+    with cols[3]:
         if current:
             st.caption(f"已反馈：{'👍 有帮助' if current == '赞' else '👎 没帮助'}")
 
@@ -133,13 +142,14 @@ def _stream_answer(text: str, history: list[dict[str, str]]) -> None:
         meta = {}
     source = str(meta.get("source") or "local")
     qa_id = str(meta.get("qa_id") or "")
-    badge = {"local": "📗 本地计算/知识库", "cache": "♻️ 本地缓存", "llm": "🤖 AI 流式回答"}.get(
-        source, "💬 回答"
-    )
+    badge = {
+        "local": "📗 本地计算/知识库", "cache": "♻️ 本地缓存",
+        "knowledge": "🗂️ 已审核知识库", "llm": "🤖 AI 流式回答",
+    }.get(source, "💬 回答")
     with st.chat_message("assistant"):
         st.caption(f"{badge} · 仅供参考，以主管税务机关核定为准")
         reply = ""
-        if source in ("local", "cache"):
+        if source in ("local", "cache", "knowledge"):
             # 本地/缓存：一次性拿到答案后逐字展示，避免等待感
             events = list(generator)
             done = next((event for event in reversed(events) if event.get("type") == "done"), {})
@@ -201,9 +211,10 @@ def _drawer() -> None:
                 qa_id = str(message.get("qa_id") or "")
                 if role == "assistant" and qa_id:
                     source = str(message.get("source") or "")
-                    badge = {"local": "📗 本地计算", "cache": "♻️ 本地缓存", "llm": "🤖 AI 流式"}.get(
-                        source, "💬 回答"
-                    )
+                    badge = {
+                        "local": "📗 本地计算", "cache": "♻️ 本地缓存",
+                        "knowledge": "🗂️ 已审核知识库", "llm": "🤖 AI 流式",
+                    }.get(source, "💬 回答")
                     st.caption(f"{badge} · 仅供参考")
                     _render_feedback(qa_id)
 
