@@ -492,7 +492,7 @@ def _render_onboarding_banner() -> None:
 
 
 def _render_todo_card() -> None:
-    """本月/本季度必做：按时间倒排，给出截止日、剩余天数与去处理入口。"""
+    """今天先做这 1–3 件事：按紧急程度只展示最需要处理的任务，其余折叠。"""
     try:
         from engine.tax_calendar import upcoming_deadlines
         from engine.calendar_export import build_ics
@@ -505,23 +505,33 @@ def _render_todo_card() -> None:
         return
     if not deadlines:
         return
+
+    def _priority(item: dict) -> tuple[int, int]:
+        # 越紧急越靠前：逾期 > 今天 > 3 天 > 7 天 > 更晚
+        level = str(item.get("level") or "normal")
+        rank = {"overdue": 0, "urgent": 1, "soon": 2, "normal": 3}.get(level, 3)
+        return rank, int(item.get("days_left") or 0)
+
+    ordered = sorted(deadlines, key=_priority)
+    today_tasks = ordered[:3]
+    rest = ordered[3:]
     urgent = [item for item in deadlines if str(item.get("level")) in ("overdue", "urgent")]
     soon = [item for item in deadlines if str(item.get("level")) == "soon"]
+
     with st.container(border=True):
         head_cols = st.columns([5, 2])
         with head_cols[0]:
-            st.markdown("#### ✅ 本月 / 本季度必做")
+            st.markdown("#### ✅ 今天先做这几件事")
             if urgent:
                 st.warning(
-                    f"有 {len(urgent)} 项已到期/即将到期：" +
-                    "、".join(str(item.get("name")) for item in urgent[:3]) +
-                    (" 等" if len(urgent) > 3 else ""),
+                    f"最紧急：{'、'.join(str(item.get('name')) for item in urgent[:3])}"
+                    f"{' 等' if len(urgent) > 3 else ''}，建议今天处理。",
                     icon="⏰",
                 )
             elif soon:
-                st.warning(f"有 {len(soon)} 项将在 7 天内到期，建议提前处理。", icon="⏳")
+                st.caption("本周内到期的事项如下，建议提前处理。")
             else:
-                st.caption("以下是最近 45 天内的申报事项；完成后在对应页面确认状态。")
+                st.caption("今天没有紧急事项；以下是最近需要关注的申报。")
         with head_cols[1]:
             try:
                 ics = build_ics(deadlines)
@@ -532,12 +542,12 @@ def _render_todo_card() -> None:
                     mime="text/calendar",
                     key="dashboard_ics_download",
                     width="stretch",
-                    help="导入手机/电脑日历后，可由系统日历提前提醒（需保持日历同步）",
+                    help="导入手机/电脑日历后，由系统日历提前提醒",
                 )
             except Exception as exc:  # noqa: BLE001
                 st.caption(f"日历导出不可用：{exc}")
-        for index, item in enumerate(deadlines[:6]):
-            status = str(item.get("label") or "")
+
+        for index, item in enumerate(today_tasks):
             level = str(item.get("level") or "normal")
             icon = "🔴" if level == "overdue" else ("🟠" if level == "urgent" else ("🟡" if level == "soon" else "🟢"))
             row = st.columns([5, 2, 2])
@@ -546,18 +556,32 @@ def _render_todo_card() -> None:
                 st.caption(f"税款所属期：{item.get('tax_period_label') or item.get('tax_period') or '—'}")
             with row[1]:
                 st.caption(f"截止：{item.get('due_date')}")
-                st.caption(status)
+                st.caption(str(item.get("label") or ""))
             with row[2]:
                 page = nav.PAGE_PAYROLL if item.get("key") == "personal_tax_monthly" else nav.PAGE_FILING
                 if st.button("去处理 →", key=f"todo_goto_{item.get('key')}_{index}", width="stretch"):
                     nav.goto(page)
-        if len(deadlines) > 6:
-            st.caption(f"还有 {len(deadlines) - 6} 项未展示；可导出日历或到「📋 申报填报」查看。")
-        st.caption(
-            "提醒说明：本系统只在打开时提示，不会在关闭后推送；"
-            "建议点「导出到手机日历」，让手机系统日历提前 3 天提醒。"
-        )
 
+        if rest:
+            with st.expander(f"查看本月其余 {len(rest)} 项待办", expanded=False):
+                for index, item in enumerate(rest, start=3):
+                    level = str(item.get("level") or "normal")
+                    icon = "🔴" if level == "overdue" else ("🟠" if level == "urgent" else ("🟡" if level == "soon" else "🟢"))
+                    row = st.columns([5, 2, 2])
+                    with row[0]:
+                        st.markdown(f"{icon} {item.get('name')}")
+                        st.caption(f"税款所属期：{item.get('tax_period_label') or item.get('tax_period') or '—'}")
+                    with row[1]:
+                        st.caption(f"截止：{item.get('due_date')}")
+                        st.caption(str(item.get("label") or ""))
+                    with row[2]:
+                        page = nav.PAGE_PAYROLL if item.get("key") == "personal_tax_monthly" else nav.PAGE_FILING
+                        if st.button("去处理 →", key=f"todo_goto_rest_{item.get('key')}_{index}", width="stretch"):
+                            nav.goto(page)
+        st.caption(
+            "只显示今天最需要处理的 1–3 件；其余已折叠。"
+            "提醒仅在本系统打开时展示；可导出 .ics 让手机日历提前提醒。"
+        )
 
 def _render_zero_and_late_card(data: dict) -> None:
     """零申报提醒 + 滞纳金试算（只提示风险，不制造恐慌）。"""

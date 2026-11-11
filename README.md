@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.20.0-informational)
+![Version](https://img.shields.io/badge/version-1.21.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -112,7 +112,7 @@
 | 🗓️ 申报日历 | 季度/月度申报截止日（周末顺延）、倒计时、提醒窗口、季度完成清单 | 确定性日期计算 |
 | 🗓️ 结账与归档 | 月结/季结状态机（结账锁定写入、生成损益结转凭证、快照哈希）、申报包归档（Excel+PDF+SHA-256 清单）、数据备份/恢复演练 | 期间锁 + 确定性结转 + reportlab 中文 PDF |
 | 🤖 AI 助手 | 「税小智」对话助手，工具调用（算税/记账/查台账/生成申报表/查政策/核对申报）；**本地优先**（算税/台账/日历等命中本地直接回答，不调 API）+ **SSE 流式** + **问答缓存/👍👎反馈/已审核知识库**；无 Key 自动离线；全局侧边抽屉任意页面可用 | DeepSeek Function Calling + SSE（deepseek-chat / deepseek-reasoner） |
-| 📊 驾驶舱 | 本季度收入/税费/申报倒计时/收入趋势/提醒；**按时间排序的「本月/本季度必做」待办卡 + .ics 手机日历提醒**；离职异常卡；零申报/滞纳金试算 | Streamlit + Plotly + 确定性计算 |
+| 📊 驾驶舱 | 本季度收入/税费/申报倒计时/收入趋势/提醒；**「今天先做这 1–3 件事」待办卡（其余折叠） + .ics 手机日历提醒**；离职异常卡；零申报/滞纳金试算 | Streamlit + Plotly + 确定性计算 |
 | 📖 图文操作指引 | 增值税申报、个税扣缴、所得税预缴、汇算清缴、首次报税、离职更正 6 个高频流程：菜单路径、字段说明、常见错误、官方入口、完成进度、PDF 操作单；**自绘示意图，不使用电子税务局截图** | 本地内容 + reportlab PDF，无版权/隐私风险 |
 | 🗂️ AI 问答历史 | 每次提问/回答/来源/工具调用/反馈记录在当前公司账套；相同问题命中缓存可免 API 调用 | 本地 CSV，按公司隔离 |
 | 🗂️ 已审核问答知识库 | 从历史问答沉淀「候选 → 审核发布」；BM25/bigram 检索，高置信直接回答，中置信注入 LLM 上下文；政策版本变化自动失效 | 本地 CSV + 规则检索，不依赖向量库 |
@@ -650,4 +650,4 @@ data/
 
 ---
 
-*版本 1.20.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.21.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
