@@ -178,6 +178,7 @@ def _stream_answer(text: str, history: list[dict[str, str]]) -> None:
     badge = {
         "local": "📗 本地计算/知识库", "cache": "♻️ 本地缓存",
         "knowledge": "🗂️ 已审核知识库", "llm": "🤖 AI 流式回答",
+        "automation": "⚡ AI 代办",
     }.get(source, "💬 回答")
     with st.chat_message("assistant"):
         st.caption(f"{badge} · 仅供参考，以主管税务机关核定为准")
@@ -206,6 +207,71 @@ def _stream_answer(text: str, history: list[dict[str, str]]) -> None:
             qa_id = str(finish.get("qa_id") or qa_id)
             placeholder.markdown(reply or "暂时没有生成回复。")
     _append("assistant", reply, qa_id=qa_id, source=source)
+
+
+def _render_automation_pending() -> None:
+    """AI 识别到代办请求后，在抽屉里显示预览 + 确认执行卡。"""
+    pending = st.session_state.get("_ai_automation_pending")
+    if not pending:
+        return
+    intent = pending.get("intent") or {}
+    preview = pending.get("preview") or {}
+    action = str(intent.get("action") or "")
+    with st.container(border=True):
+        st.markdown(f"**⚡ 待确认代办：{intent.get('label') or ''}**")
+        if action == "payroll":
+            cols = st.columns(2)
+            with cols[0]:
+                st.metric("在职员工", f"{preview.get('active_count', 0)} 人")
+            with cols[1]:
+                st.metric("待生成", f"{preview.get('pending_count', 0)} 人")
+            if preview.get("pending_names"):
+                st.caption("待生成：" + "、".join(preview["pending_names"]))
+        elif action == "ingest":
+            summary = preview.get("summary") or {}
+            cols = st.columns(2)
+            with cols[0]:
+                st.metric("待匹配发票", f"{summary.get('invoices_pending', 0)} 张")
+            with cols[1]:
+                st.metric("待匹配流水", f"{summary.get('transactions_pending', 0)} 笔")
+        elif action == "filing":
+            cols = st.columns(2)
+            with cols[0]:
+                st.metric("申报表", f"{preview.get('form_count', 0)} 张")
+            with cols[1]:
+                st.metric("合计税费", f"¥{preview.get('total_tax', 0):,.2f}")
+        elif action == "correction":
+            summary = preview.get("summary") or {}
+            cols = st.columns(3)
+            with cols[0]:
+                st.metric("异常员工", f"{summary.get('employees', 0)} 人")
+            with cols[1]:
+                st.metric("涉及月份", f"{summary.get('months', 0)} 个")
+            with cols[2]:
+                st.metric("涉及工资", f"¥{summary.get('income', 0):,.2f}")
+        for warning in preview.get("warnings") or []:
+            st.warning(warning)
+        st.caption("执行前自动备份；不会登录电子税务局、不会自动提交申报/缴款。")
+        confirmed = st.checkbox("我已核对预览，确认执行", key=f"ai_auto_confirm_{action}")
+        cols = st.columns(2)
+        with cols[0]:
+            if st.button("⚡ 确认执行", key=f"ai_auto_execute_{action}", type="primary",
+                         disabled=not confirmed, width="stretch"):
+                try:
+                    from automation import intents
+
+                    result = intents.execute(intent)
+                    message = intents.result_text(action, result)
+                    st.session_state.pop("_ai_automation_pending", None)
+                    _append("assistant", message, source="automation")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"执行失败：{exc}")
+        with cols[1]:
+            if st.button("取消", key=f"ai_auto_cancel_{action}", width="stretch"):
+                st.session_state.pop("_ai_automation_pending", None)
+                _append("assistant", "已取消代办。需要时再告诉我。", source="automation")
+                st.rerun()
 
 
 def _drawer() -> None:
@@ -247,10 +313,12 @@ def _drawer() -> None:
                     badge = {
                         "local": "📗 本地计算", "cache": "♻️ 本地缓存",
                         "knowledge": "🗂️ 已审核知识库", "llm": "🤖 AI 流式",
+                        "automation": "⚡ AI 代办",
                     }.get(source, "💬 回答")
                     st.caption(f"{badge} · 仅供参考")
                     _render_feedback(qa_id)
 
+        _render_automation_pending()
         with st.form("floating_ai_form", clear_on_submit=True):
             prompt = st.text_input(
                 "问智小税…", key="floating_ai_prompt", label_visibility="collapsed",
@@ -263,6 +331,26 @@ def _drawer() -> None:
             _append("user", text)
             with st.chat_message("user"):
                 st.markdown(text)
+            try:
+                from automation import intents
+
+                intent = intents.detect(text)
+            except Exception:  # noqa: BLE001
+                intent = None
+            if intent:
+                try:
+                    preview = intents.preview(intent)
+                    st.session_state["_ai_automation_pending"] = {
+                        "intent": intent, "preview": preview,
+                    }
+                    _append(
+                        "assistant",
+                        f"⚡ 我可以帮你「{intent['label']}」。请先核对下面预览，确认后执行；执行前会自动备份。",
+                        source="automation",
+                    )
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.warning(f"代办预览失败，改为普通回答：{exc}")
             _stream_answer(text, previous_history)
             st.rerun()
         st.caption(config.DISCLAIMER)
