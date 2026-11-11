@@ -1447,10 +1447,58 @@ def _render_disputes_section() -> None:
 
     ui.section("个税异议申诉台账", "记录员工在个税 APP 的申诉、撤销、沟通与更正闭环")
     try:
-        disputes = corrections.list_disputes()
+        people_all = employee_api.list_employees(status=None, include_left=True)
+    except Exception:  # noqa: BLE001
+        people_all = []
+    filter_cols = st.columns([2, 2, 2, 16])
+    with filter_cols[0]:
+        status_filter = st.selectbox(
+            "状态筛选", ["全部", *corrections.DISPUTE_STATUSES], key="dispute_filter_status"
+        )
+    with filter_cols[1]:
+        people_filter_map = {"全部员工": ""}
+        people_filter_map.update({f"{item['name']}（{item['id']}）": str(item["id"]) for item in people_all})
+        people_filter_label = st.selectbox(
+            "员工筛选", list(people_filter_map), key="dispute_filter_employee"
+        )
+    with filter_cols[2]:
+        keyword = st.text_input("关键词", key="dispute_filter_keyword", placeholder="姓名/类型/月份/处理结果")
+    try:
+        disputes = corrections.list_disputes(
+            status=None if status_filter == "全部" else status_filter,
+            keyword=keyword,
+            employee_id=people_filter_map.get(people_filter_label, ""),
+        )
     except Exception as exc:  # noqa: BLE001
         st.warning(f"申诉台账不可用：{exc}")
         disputes = []
+    summary = corrections.summarize_disputes(disputes) if disputes else {"total": 0, "pending": 0, "counts": {}}
+    ui.metric_row(
+        [
+            {"label": "筛选结果", "value": f"{summary.get('total', 0)} 条"},
+            {"label": "待处理/已沟通", "value": f"{summary.get('pending', 0)} 条"},
+            {"label": "已撤销", "value": f"{summary.get('counts', {}).get('已撤销', 0)} 条"},
+            {"label": "已更正/已关闭", "value": f"{summary.get('closed', 0)} 条"},
+        ],
+        columns=4,
+    )
+    export_cols = st.columns([1, 3])
+    with export_cols[0]:
+        try:
+            export_path = corrections.export_disputes_excel(disputes)
+            st.download_button(
+                "📊 导出筛选结果 Excel",
+                data=Path(export_path).read_bytes(),
+                file_name=Path(export_path).name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dispute_export",
+                width="stretch",
+                disabled=not disputes,
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"导出失败：{exc}")
+    with export_cols[1]:
+        st.caption("导出内容为当前筛选结果（状态/员工/关键词）；可用于交接、税务核查留档。")
     if disputes:
         st.dataframe(
             pd.DataFrame(
@@ -1499,7 +1547,10 @@ def _render_disputes_section() -> None:
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"删除失败：{exc}")
     else:
-        st.info("暂无申诉记录。员工撤销申诉后，建议在此登记留痕。")
+        if summary.get("total", 0) == 0 and (status_filter != "全部" or keyword or people_filter_map.get(people_filter_label)):
+            st.info("当前筛选条件下没有申诉记录。")
+        else:
+            st.info("暂无申诉记录。员工撤销申诉后，建议在此登记留痕。")
 
     with st.expander("➕ 新增申诉记录", expanded=False):
         try:

@@ -205,12 +205,78 @@ DISPUTE_STATUSES: tuple[str, ...] = ("待处理", "已沟通", "已撤销", "已
 DISPUTE_TYPES: tuple[str, ...] = ("任职受雇信息", "收入纳税明细", "其他")
 
 
-def list_disputes(status: str | None = None) -> list[dict[str, Any]]:
-    """列出申诉台账（可按状态过滤），按申诉日期倒序。"""
+def list_disputes(
+    status: str | None = None,
+    *,
+    keyword: str = "",
+    employee_id: str = "",
+) -> list[dict[str, Any]]:
+    """列出申诉台账（可按状态/关键词/员工过滤），按申诉日期倒序。
+
+    ``keyword`` 匹配员工姓名、申诉类型、涉及月份、处理结果与备注。
+    """
     rows = store.table(DISPUTE_TABLE).read()
     if status:
         rows = [row for row in rows if str(row.get("status")) == status]
+    if employee_id:
+        rows = [row for row in rows if str(row.get("employee_id")) == employee_id]
+    text = str(keyword or "").strip()
+    if text:
+        rows = [
+            row
+            for row in rows
+            if text
+            in " ".join(
+                str(row.get(key) or "")
+                for key in ("employee_name", "dispute_type", "period", "resolution", "note", "status")
+            )
+        ]
     return sorted(rows, key=lambda row: str(row.get("filed_date") or ""), reverse=True)
+
+
+def summarize_disputes(rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """按状态汇总申诉台账（总数 / 各状态数量 / 待处理数）。"""
+    items = rows if rows is not None else list_disputes()
+    counts: dict[str, int] = {}
+    for row in items:
+        status = str(row.get("status") or "待处理")
+        counts[status] = counts.get(status, 0) + 1
+    return {
+        "total": len(items),
+        "counts": counts,
+        "pending": counts.get("待处理", 0) + counts.get("已沟通", 0),
+        "closed": counts.get("已更正", 0) + counts.get("已关闭", 0),
+    }
+
+
+def export_disputes_excel(rows: list[dict[str, Any]] | None = None, path: str | Path | None = None) -> Path:
+    """导出个税异议申诉台账 Excel（支持按当前筛选结果导出）。"""
+    from openpyxl import Workbook
+
+    items = rows if rows is not None else list_disputes()
+    target = Path(path) if path else Path(config.EXPORT_DIR) / f"个税异议申诉台账_{config.today().isoformat()}.xlsx"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "个税异议申诉台账"
+    ws.append(["个税异议申诉台账"])
+    ws.append([config.DISCLAIMER])
+    ws.append([])
+    ws.append(["编号", "员工编号", "员工姓名", "申诉类型", "涉及月份", "申诉日期", "状态", "撤销日期", "处理结果", "备注", "创建时间", "更新时间"])
+    for row in items:
+        ws.append([
+            row.get("id"), row.get("employee_id"), row.get("employee_name"), row.get("dispute_type"),
+            row.get("period"), row.get("filed_date"), row.get("status"), row.get("withdrawn_date"),
+            row.get("resolution"), row.get("note"), row.get("created_at"), row.get("updated_at"),
+        ])
+    summary = summarize_disputes(items)
+    ws2 = wb.create_sheet("汇总")
+    ws2.append(["指标", "数值"])
+    ws2.append(["记录总数", summary["total"]])
+    for status_text, count in summary["counts"].items():
+        ws2.append([f"状态：{status_text}", count])
+    wb.save(target)
+    return target
 
 
 def add_dispute(

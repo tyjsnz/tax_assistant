@@ -466,21 +466,53 @@ def _render_closing_card() -> None:
     theme.disclaimer()
 
 
-def _render_employee_warnings() -> None:
-    """离开日期缺失提醒（避免“人走了但系统里还是在职/没日期”）。"""
+def _render_hr_anomaly_card() -> None:
+    """首页「离职与申诉异常」提醒卡片：汇总离职多申报、缺离职日期、待处理申诉。"""
     try:
+        from ledger import corrections as corrections_module
         from ledger import employees as employees_module
 
+        scan = corrections_module.scan_departed_overpayments()
         missing = employees_module.employees_without_leave_date()
-    except Exception:  # noqa: BLE001 - 数据不完整时不影响驾驶舱
+        disputes = corrections_module.list_disputes()
+    except Exception:  # noqa: BLE001 - 异常数据不影响驾驶舱
         return
-    if missing:
-        names = "、".join(str(item.get("name") or item.get("id")) for item in missing[:5])
-        st.warning(
-            f"有 {len(missing)} 名员工状态为「离职」但未填写离职日期：{names}。"
-            "请在「员工与工资 → 员工管理」补录实际离职日期，否则无法自动扫描离职后误申报。",
-            icon="⚠️",
-        )
+    summary = scan.get("summary") or {}
+    dispute_summary = corrections_module.summarize_disputes(disputes)
+    pending = int(dispute_summary.get("pending") or 0)
+    departed_people = int(summary.get("employees") or 0)
+    departed_months = int(summary.get("months") or 0)
+    missing_count = len(missing)
+    if not (departed_people or missing_count or pending):
+        st.caption("✅ 离职与申诉异常：未发现离职后仍申报、缺离职日期或待处理申诉。")
+        return
+    st.warning(
+        f"检测到离职/申诉异常：离职后仍申报 {departed_people} 人（{departed_months} 个月）、"
+        f"缺离职日期 {missing_count} 人、待处理申诉 {pending} 条，建议尽快处理。",
+        icon="🧯",
+    )
+    ui.metric_row(
+        [
+            {"label": "离职后仍申报", "value": f"{departed_people} 人"},
+            {"label": "涉及工资", "value": F.fmt_money(summary.get("income")),
+             "delta": f"已预扣个税 {F.fmt_money(summary.get('tax'))}"},
+            {"label": "缺离职日期", "value": f"{missing_count} 人"},
+            {"label": "待处理申诉", "value": f"{pending} 条"},
+        ],
+        columns=4,
+    )
+    details = []
+    if departed_people:
+        names = "、".join(str(item.get("employee_name") or "") for item in (scan.get("items") or [])[:5])
+        details.append(f"离职后仍申报：{names}")
+    if missing_count:
+        details.append("缺离职日期：" + "、".join(str(item.get("name") or "") for item in missing[:5]))
+    if pending:
+        details.append(f"待处理/已沟通申诉 {pending} 条")
+    if details:
+        st.caption("；".join(details) + "。")
+    if st.button("🧯 去「离职与纠错」处理 →", key="dash_goto_correction", type="primary"):
+        nav.goto(nav.PAGE_CORRECTION)
 
 
 def render() -> None:
@@ -518,7 +550,7 @@ def render() -> None:
     data = _load_dashboard()
     period_label = ledger_api.quarter_label(data.get("period") or current_quarter())
 
-    _render_employee_warnings()
+    _render_hr_anomaly_card()
     ui.section("📊 本季度核心指标", f"税款所属期：{period_label}（金额单位：元）")
     ui.metric_row(
         [

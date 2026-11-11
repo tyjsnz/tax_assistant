@@ -597,3 +597,12 @@ def test_correction_page_renders_empty() -> None:
     assert "申诉台账不可用" not in warnings
     infos = "\n".join(str(item.value) for item in at.info)
     assert "暂无申诉记录" in infos
+
+
+def test_floating_ai_button_on_all_pages() -> None:
+    """全局浮动 AI 助手按钮应出现在任意页面。"""
+    at = _new_app()
+    assert any(getattr(button, "key", "") == "floating_ai_open" for button in at.button)
+    at.radio(key="nav").set_value("📒 台账管理").run()
+    _assert_clean(at, "台账管理（浮动 AI）")
+    assert any(getattr(button, "key", "") == "floating_ai_open" for button in at.button)

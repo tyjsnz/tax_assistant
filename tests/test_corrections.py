@@ -175,3 +175,21 @@ class TestManualCorrection:
         assert main.main(["correction-plan", "--employee", employee["id"], "--leave-month", "2026-01",
                           "--out", str(tmp_path / "manual.xlsx")]) == 0
         assert (tmp_path / "manual.xlsx").exists()
+
+
+class TestDisputeFilterExport:
+    def test_filter_summary_export(self, tmp_path):
+        first = employees.add_employee({"name": "张三", "hire_date": "2026-01-01"})
+        second = employees.add_employee({"name": "李四", "hire_date": "2026-01-01"})
+        corrections.add_dispute(first["id"], "收入纳税明细", "2026-06-01", period="2026-03")
+        corrections.add_dispute(second["id"], "任职受雇信息", "2026-06-02", status="已撤销")
+
+        assert len(corrections.list_disputes(status="待处理")) == 1
+        assert len(corrections.list_disputes(keyword="李四")) == 1
+        assert len(corrections.list_disputes(employee_id=first["id"])) == 1
+        summary = corrections.summarize_disputes()
+        assert summary["total"] == 2
+        assert summary["counts"].get("待处理") == 1
+        assert summary["counts"].get("已撤销") == 1
+        path = corrections.export_disputes_excel(corrections.list_disputes(), tmp_path / "disputes.xlsx")
+        assert Path(path).exists() and Path(path).stat().st_size > 3_000

@@ -153,6 +153,15 @@ def _render_page(page: str) -> None:
         with st.expander("错误详情（可复制给开发者）", expanded=False):
             st.code(traceback.format_exc(), language="text")
 
+    # 全局浮动 AI 助手：任何页面常驻右下角，点击弹出对话框
+    try:
+        from ui.components import floating_ai
+
+        floating_ai.render()
+    except Exception as exc:  # noqa: BLE001 - 悬浮助手失败不影响当前页面
+        if type(exc).__name__ not in _CONTROL_FLOW:
+            st.caption(f"浮动 AI 助手暂不可用：{exc}")
+
 
 def main() -> None:
     """应用入口。"""
