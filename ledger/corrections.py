@@ -46,9 +46,19 @@ def scan_departed_overpayments() -> dict[str, Any]:
     返回 ``{"items": [...], "summary": {"employees", "months", "income", "tax", "status_counts"}}``。
     """
     items: list[dict[str, Any]] = []
+    pending_leave_date: list[dict[str, Any]] = []
     for employee in employees.list_employees(status=None, include_left=True):
         leave_date = str(employee.get("leave_date") or "")
         if not leave_date:
+            if str(employee.get("status") or "") == "离职":
+                pending_leave_date.append(
+                    {
+                        "employee_id": str(employee.get("id")),
+                        "employee_name": str(employee.get("name")),
+                        "status": str(employee.get("status")),
+                        "note": "已标记离职但未填离职日期：无法自动扫描，请补录日期或使用手动模式",
+                    }
+                )
             continue
         suspects = _suspect_rows_for(employee)
         if not suspects:
@@ -78,27 +88,46 @@ def scan_departed_overpayments() -> dict[str, Any]:
             status_counts[status] = status_counts.get(status, 0) + 1
     return {
         "items": items,
+        "pending_leave_date": pending_leave_date,
         "summary": {
             "employees": len(items),
             "months": sum(item["month_count"] for item in items),
             "income": round2(sum(item["income_total"] for item in items)),
             "tax": round2(sum(item["tax_withheld"] for item in items)),
             "status_counts": status_counts,
+            "pending_leave_date": len(pending_leave_date),
         },
         "disclaimer": DISCLAIMER,
     }
 
 
-def build_correction_plan(employee_id: str, *, late_fee_days: int = 0) -> dict[str, Any]:
-    """为一个离职员工生成更正方案（逐月重算 + 企业所得税/社保影响 + 操作步骤）。"""
+def build_correction_plan(
+    employee_id: str,
+    *,
+    leave_month: str | None = None,
+    removed_periods: list[str] | None = None,
+    late_fee_days: int = 0,
+) -> dict[str, Any]:
+    """为一个员工生成更正方案（逐月重算 + 企业所得税/社保影响 + 操作步骤）。
+
+    员工忘记登记离职日期、或从未在系统标记离职时，可传 ``leave_month``（如 ``"2026-02"``）
+    或 ``removed_periods``（如 ``["2026-03", "2026-04"]``）手动指定更正范围。
+    """
     employee = employees.get_employee(employee_id)
     if not employee:
         raise ValueError(f"未找到员工 {employee_id}")
     rows = [row for row in payroll.list_payroll(None) if str(row.get("employee_id")) == str(employee_id)]
-    plan = calc_correction_plan(employee, rows, late_fee_days=late_fee_days)
+    plan = calc_correction_plan(
+        employee,
+        rows,
+        leave_month=leave_month,
+        removed_periods=removed_periods,
+        late_fee_days=late_fee_days,
+    )
     log_user_action(
         "生成离职多申报更正方案",
-        f"{employee.get('name')}（{employee_id}）：更正 {plan['totals']['months_to_correct']} 个月，"
+        f"{employee.get('name')}（{employee_id}）：{plan.get('cutoff_source')}，"
+        f"更正 {plan['totals']['months_to_correct']} 个月，"
         f"预计多缴个税 {yuan(plan['totals']['tax_refund'])} 元",
     )
     return plan

@@ -485,11 +485,18 @@ def cmd_correction_plan(args: argparse.Namespace) -> int:
     if not args.employee:
         print("请指定 --employee 员工编号，或使用 --all 批量生成。")
         return 1
-    plan = corrections.build_correction_plan(args.employee, late_fee_days=args.late_fee_days)
+    manual_periods = [item.strip() for item in (args.periods or "").split(",") if item.strip()]
+    plan = corrections.build_correction_plan(
+        args.employee,
+        leave_month=args.leave_month or None,
+        removed_periods=manual_periods or None,
+        late_fee_days=args.late_fee_days,
+    )
     path = corrections.export_correction_plan(plan, args.out or None)
     pdf_path = corrections.export_correction_plan_pdf(plan, args.pdf or None) if args.pdf else None
     totals = plan["totals"]
-    print(f"\n🧯 离职多申报更正方案：{plan['employee_name']}（离职日期 {plan['leave_date']}）")
+    cutoff_label = plan.get("leave_date") or f"未登记（手动按 {plan.get('leave_month')}）"
+    print(f"\n🧯 离职多申报更正方案：{plan['employee_name']}（离职日期 {cutoff_label}）")
     print("-" * 96)
     print(f"  需更正月份：{'、'.join(plan['removed_periods']) or '无'}")
     print(f"  原申报收入 {totals['original_income']:,.2f} → 更正后 {totals['corrected_income']:,.2f} 元")
@@ -1118,6 +1125,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_correction.add_argument("--out", default=None, help="单人操作单导出路径（Excel）")
     p_correction.add_argument("--pdf", default=None, help="同时导出 PDF 操作单路径")
     p_correction.add_argument("--out-dir", default=None, help="批量导出目录")
+    p_correction.add_argument("--leave-month", default=None, help="手动离职月份 YYYY-MM（员工忘记登记离职/未标记离职时使用）")
+    p_correction.add_argument("--periods", default="", help="手动指定需更正月份，逗号分隔，如 2026-03,2026-04（优先）")
     p_correction.add_argument("--late-fee-days", type=int, default=0, help="需补税时估算滞纳金天数")
     p_correction.add_argument("--json", action="store_true")
     p_correction.set_defaults(func=cmd_correction_plan)

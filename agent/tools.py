@@ -707,12 +707,34 @@ def _tool_payroll_correction(args: dict[str, Any]) -> dict[str, Any]:
     scan = corrections.scan_departed_overpayments()
     items = scan.get("items") or []
     if not items:
+        leave_month = str(args.get("leave_month") or "").strip()
+        if employee and leave_month:
+            from ledger import employees as employee_api
+            all_people = employee_api.list_employees(status=None, include_left=True)
+            candidate = next(
+                (p for p in all_people if employee == str(p.get("id")) or employee in str(p.get("name") or "")),
+                None,
+            )
+            if candidate:
+                plan = corrections.build_correction_plan(str(candidate["id"]), leave_month=leave_month)
+                totals = plan.get("totals") or {}
+                lines = [
+                    f"【手动更正方案 · {plan.get('employee_name')}】",
+                    f"- 手动离职月份：{plan.get('leave_month')}（员工档案未登记离职日期）",
+                    f"- 需更正月份：{'、'.join(plan.get('removed_periods') or []) or '无'}",
+                    f"- 预计多缴（可退）{yuan(totals.get('tax_refund'))} 元；"
+                    f"少缴（需补）{yuan(totals.get('tax_payable'))} 元",
+                    "- 完整九步操作与逐月明细请在「员工与工资 → 离职与纠错」手动生成并导出 PDF 操作单。",
+                    DISCLAIMER,
+                ]
+                return _ok({**scan, "plan": plan}, "\n".join(lines))
         data = {**scan, "plan": None}
         display = (
             "【离职与申报纠错扫描】\n"
             "- 未发现「已离职但离职后仍有工资/个税申报」的记录。\n"
+            "- 如果员工实际已离职但系统里没登记离职日期/仍是「在职」，请告诉我员工姓名和离职月份"
+            "（例如：张三 2026-02 离职），我按手动模式生成更正测算。\n"
             "- 如果员工在个税 APP 申诉，请先核实离职日期与银行流水；确认无误后在扣缴端异议处理中说明。\n"
-            "- 若已存在误申报，可告诉我员工姓名，我帮你生成更正测算与操作步骤。\n"
             + DISCLAIMER
         )
         return _ok(data, display)
@@ -723,9 +745,33 @@ def _tool_payroll_correction(args: dict[str, Any]) -> dict[str, Any]:
             None,
         )
         if not target:
+            if args.get("leave_month"):
+                from ledger import employees as employee_api
+                all_people = employee_api.list_employees(status=None, include_left=True)
+                candidate = next(
+                    (p for p in all_people if employee == str(p.get("id")) or employee in str(p.get("name") or "")),
+                    None,
+                )
+                if candidate:
+                    plan = corrections.build_correction_plan(
+                        str(candidate["id"]), leave_month=str(args.get("leave_month"))
+                    )
+                    totals = plan.get("totals") or {}
+                    lines = [
+                        f"【手动更正方案 · {plan.get('employee_name')}】",
+                        f"- 手动离职月份：{plan.get('leave_month')}（员工档案未登记离职日期）",
+                        f"- 需更正月份：{'、'.join(plan.get('removed_periods') or []) or '无'}",
+                        f"- 预计多缴（可退）{yuan(totals.get('tax_refund'))} 元；"
+                        f"少缴（需补）{yuan(totals.get('tax_payable'))} 元",
+                        "- 完整九步操作与逐月明细请在「员工与工资 → 离职与纠错」手动生成并导出 PDF 操作单。",
+                        DISCLAIMER,
+                    ]
+                    return _ok({**scan, "plan": plan}, "\n".join(lines))
             names = "、".join(item.get("employee_name", "") for item in items)
             raise ValueError(f"未在异常名单中找到「{employee}」。当前异常员工：{names}。")
-        plan = corrections.build_correction_plan(str(target["employee_id"]))
+        plan = corrections.build_correction_plan(
+            str(target["employee_id"]), leave_month=str(args.get("leave_month") or "") or None
+        )
         totals = plan.get("totals") or {}
         lines = [
             f"【离职多申报更正方案 · {plan.get('employee_name')}】",
@@ -1431,6 +1477,7 @@ _TOOL_DEFS: list[dict[str, Any]] = [
         "parameters": _schema(
             {
                 "employee": {"type": "string", "description": "可选：员工姓名或编号；不传则扫描全公司"},
+                "leave_month": {"type": "string", "description": "可选：手动离职月份 YYYY-MM（员工未登记离职日期时使用）"},
             },
             [],
         ),

@@ -1129,9 +1129,85 @@ def _render_correction_tab() -> None:
             except Exception as exc:  # noqa: BLE001
                 st.error(f"生成失败：{exc}")
 
+    pending = scan.get("pending_leave_date") or []
+    if pending:
+        st.warning(
+            "有员工已标记「离职」但未填写离职日期，系统无法自动扫描其离职后申报："
+            + "、".join(item["employee_name"] for item in pending)
+            + "。请补录离职日期，或使用下方「手动生成更正方案」。"
+        )
+        with st.expander("📝 补录离职日期", expanded=False):
+            pending_map = {f"{item['employee_name']}（{item['employee_id']}）": item["employee_id"] for item in pending}
+            pending_label = st.selectbox("员工", list(pending_map), key="pending_leave_employee")
+            pending_date = st.date_input("离职日期", value=date.today(), key="pending_leave_date")
+            if st.button("💾 保存离职日期", key="pending_leave_save", type="primary"):
+                try:
+                    employee_api.update_employee(
+                        pending_map[pending_label],
+                        {"status": "离职", "leave_date": str(pending_date)},
+                    )
+                    st.success("已补录离职日期，正在重新扫描…")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"保存失败：{exc}")
+
+    with st.expander("🛠️ 员工忘记登记离职 / 没有离职日期？手动生成更正方案", expanded=False):
+        st.caption(
+            "适用于：员工实际已离职，但系统里仍是「在职」或没有离职日期，无法自动扫描；"
+            "可手动指定离职月份，或直接勾选员工在个税 APP 申诉/误申报的月份。"
+            "建议先用银行流水、考勤、离职沟通记录确认实际离职月份。"
+        )
+        try:
+            from ledger import payroll as payroll_api
+
+            all_people = employee_api.list_employees(status=None, include_left=True)
+        except Exception as exc:  # noqa: BLE001
+            all_people = []
+            st.warning(f"员工列表不可用：{exc}")
+        if not all_people:
+            st.caption("请先在「员工管理」录入员工。")
+        else:
+            people_map = {f"{item['name']}（{item['id']}）": item["id"] for item in all_people}
+            manual_label = st.selectbox("员工", list(people_map), key="manual_employee")
+            manual_id = people_map[manual_label]
+            try:
+                manual_periods_available = sorted(
+                    {str(row.get("period")) for row in payroll_api.list_payroll(None) if str(row.get("employee_id")) == str(manual_id)}
+                )
+            except Exception:  # noqa: BLE001
+                manual_periods_available = []
+            if not manual_periods_available:
+                st.info("该员工暂无工资记录，无需更正。")
+            else:
+                manual_leave_month = st.selectbox(
+                    "离职月份（该月之后视为误申报）",
+                    manual_periods_available,
+                    index=max(len(manual_periods_available) - 2, 0),
+                    key="manual_leave_month",
+                )
+                manual_removed = st.multiselect(
+                    "或直接勾选需更正月份（优先，可多选）",
+                    manual_periods_available,
+                    key="manual_removed_periods",
+                )
+                if st.button("🧮 生成手动更正方案", key="manual_build", type="primary", width="stretch"):
+                    try:
+                        st.session_state["correction_plan"] = corrections.build_correction_plan(
+                            manual_id,
+                            leave_month=None if manual_removed else manual_leave_month,
+                            removed_periods=manual_removed or None,
+                        )
+                        st.success("已生成更正方案")
+                        st.rerun()
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"生成失败：{exc}")
+
     if plan:
         totals = plan.get("totals") or {}
-        ui.section("更正方案", f"{plan.get('employee_name')} · 离职日期 {plan.get('leave_date')}")
+        leave_label = plan.get("leave_date") or (
+            f"未登记（按 {plan.get('leave_month')} 手动指定）" if plan.get("cutoff_source") else ""
+        )
+        ui.section("更正方案", f"{plan.get('employee_name')} · 离职日期 {leave_label}")
         ui.metric_row(
             [
                 {"label": "需更正月份", "value": f"{int(totals.get('months_to_correct') or 0)} 个"},

@@ -140,3 +140,38 @@ class TestCorrectionProgress:
         assert corrections.correction_progress_summary(employee["id"])["done"] == 0
 
         assert corrections.reset_correction_progress(employee["id"]) == len(steps)
+
+
+class TestManualCorrection:
+    def test_manual_plan_for_unmarked_employee(self):
+        employee = employees.add_employee({"name": "未标记离职", "hire_date": "2026-01-01"})
+        for period in ("2026-01", "2026-02", "2026-03"):
+            payroll.build_payroll(period)
+            row = next(item for item in payroll.list_payroll(period) if item["employee_id"] == employee["id"])
+            payroll.update_payroll_row(row["id"], {"gross_salary": 12_000, "social_insurance": 1_200, "housing_fund": 400})
+            payroll.recalc_period(period)
+        plan = corrections.build_correction_plan(employee["id"], leave_month="2026-01")
+        assert plan["cutoff_source"] == "manual_leave_month"
+        assert plan["removed_periods"] == ["2026-02", "2026-03"]
+        assert plan["leave_date"] == ""
+
+    def test_pending_leave_date_scan(self):
+        from ledger import store
+
+        employee = employees.add_employee({"name": "忘记填日期", "hire_date": "2026-01-01"})
+        store.table("employees").update(employee["id"], {"status": "离职", "leave_date": ""})
+        scan = corrections.scan_departed_overpayments()
+        assert scan["summary"]["pending_leave_date"] == 1
+        assert scan["pending_leave_date"][0]["employee_name"] == "忘记填日期"
+
+    def test_cli_manual_mode(self, tmp_path):
+        employee = employees.add_employee({"name": "手动模式", "hire_date": "2026-01-01"})
+        for period in ("2026-01", "2026-02"):
+            payroll.build_payroll(period)
+            row = next(item for item in payroll.list_payroll(period) if item["employee_id"] == employee["id"])
+            payroll.update_payroll_row(row["id"], {"gross_salary": 10_000, "social_insurance": 1_000, "housing_fund": 300})
+            payroll.recalc_period(period)
+        import main
+        assert main.main(["correction-plan", "--employee", employee["id"], "--leave-month", "2026-01",
+                          "--out", str(tmp_path / "manual.xlsx")]) == 0
+        assert (tmp_path / "manual.xlsx").exists()

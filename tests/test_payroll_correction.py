@@ -110,3 +110,33 @@ class TestCitImpact:
         assert impact["small_low_profit_tax"] == pytest.approx(500.0)
         assert impact["standard_tax"] == pytest.approx(2_500.0)
         assert "纳税调增" in impact["note"]
+
+
+class TestManualCutoff:
+    def test_manual_leave_month_without_leave_date(self):
+        emp = {"id": "E9", "name": "王五", "status": "在职"}
+        rows = [_row(f"2026-0{i}", 15_000, 180) for i in range(1, 5)]
+        plan = calc_correction_plan(emp, rows, leave_month="2026-02")
+        assert plan["cutoff_source"] == "manual_leave_month"
+        assert plan["leave_month"] == "2026-02"
+        assert plan["removed_periods"] == ["2026-03", "2026-04"]
+        assert plan["totals"]["tax_refund"] > 0
+
+    def test_manual_removed_periods(self):
+        emp = {"id": "E9", "name": "王五", "status": "在职"}
+        rows = [_row(f"2026-0{i}", 15_000, 180) for i in range(1, 5)]
+        plan = calc_correction_plan(emp, rows, removed_periods=["2026-03", "2026-04"])
+        assert plan["cutoff_source"] == "manual_periods"
+        assert plan["removed_periods"] == ["2026-03", "2026-04"]
+
+    def test_manual_removed_periods_invalid(self):
+        emp = {"id": "E9", "name": "王五"}
+        rows = [_row("2026-01", 15_000, 180)]
+        with pytest.raises(ValueError):
+            calc_correction_plan(emp, rows, removed_periods=["2026-05"])
+
+    def test_manual_invalid_month(self):
+        emp = {"id": "E9", "name": "王五"}
+        rows = [_row("2026-01", 15_000, 180)]
+        with pytest.raises(ValueError):
+            calc_correction_plan(emp, rows, leave_month="2026/02")

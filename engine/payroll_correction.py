@@ -90,6 +90,8 @@ def calc_correction_plan(
     employee: dict[str, Any],
     payroll_rows: list[dict[str, Any]],
     *,
+    leave_month: str | None = None,
+    removed_periods: list[str] | None = None,
     year: str | int | None = None,
     late_fee_days: int = 0,
 ) -> dict[str, Any]:
@@ -97,9 +99,11 @@ def calc_correction_plan(
 
     参数
     ----
-    employee : 员工档案（需含 name、leave_date；deduction_choice 可选）
+    employee : 员工档案（name；leave_date 可选）
     payroll_rows : 该员工各月工资行（period、应发/奖金/补贴、社保、公积金、专项附加、其他、
                    tax_withheld 原已预扣税额、status）
+    leave_month : 手动指定离职月份（YYYY-MM）。员工忘记登记离职日期/从未标记离职时使用，优先级高于 leave_date。
+    removed_periods : 手动指定需更正的月份列表；适用于离职月份不确定、但已知申诉/误申报月份的场景，优先级最高。
     year : 用于企业所得税税率的年度（缺省取最后一行所属年度）
     late_fee_days : 若更正后需补税，估算滞纳金天数（0 表示不估算）
 
@@ -108,18 +112,41 @@ def calc_correction_plan(
     dict：离职月份、逐月更正明细、原/更正后收入与税额、多缴/少缴个税、
           企业所得税影响、社保退费参考、操作步骤与风险提示。
     """
+    import re as _re
+
     leave_date = str(employee.get("leave_date") or "")
-    if not leave_date:
-        raise ValueError("该员工未登记离职日期，无法制定更正方案；请先在员工档案中填写离职日期。")
     rows = [dict(item) for item in (payroll_rows or []) if str(item.get("period") or "")]
     if not rows:
         raise ValueError("该员工没有工资记录，无需更正。")
     rows.sort(key=lambda item: str(item.get("period")))
     periods = [str(item.get("period")) for item in rows]
-    kept_periods, removed_periods = correction_periods(leave_date, periods)
+
+    manual_removed = [str(item) for item in (removed_periods or []) if str(item).strip()]
+    if manual_removed:
+        unknown = [item for item in manual_removed if item not in periods]
+        if unknown:
+            raise ValueError(f"需更正月份不在该员工工资记录中：{'、'.join(unknown)}")
+        kept_periods = [item for item in periods if item not in manual_removed]
+        removed_periods = [item for item in periods if item in manual_removed]
+        leave_month = leave_month or (max(kept_periods) if kept_periods else removed_periods[0])
+        cutoff_source = "manual_periods"
+    elif leave_month:
+        if not _re.fullmatch(r"\d{4}-\d{2}", str(leave_month).strip()):
+            raise ValueError("手动离职月份格式应为 YYYY-MM")
+        leave_month = str(leave_month).strip()
+        kept_periods, removed_periods = correction_periods(f"{leave_month}-01", periods)
+        cutoff_source = "manual_leave_month"
+    elif leave_date:
+        leave_month = leave_date[:7]
+        kept_periods, removed_periods = correction_periods(leave_date, periods)
+        cutoff_source = "leave_date"
+    else:
+        raise ValueError(
+            "该员工未登记离职日期。请补充离职日期，或使用手动模式指定离职月份/需更正月份"
+            "（适用于员工忘记登记离职、未在系统标记离职的情况）。"
+        )
 
     row_map = {str(item.get("period")): item for item in rows}
-    leave_month = leave_date[:7]
     one_time = str(employee.get("deduction_choice") or "") == "一次性60000"
     qualified = employee.get("is_deduction_qualified")
     if qualified is None:
@@ -252,6 +279,7 @@ def calc_correction_plan(
         "employee_name": str(employee.get("name") or ""),
         "leave_date": leave_date,
         "leave_month": leave_month,
+        "cutoff_source": cutoff_source,
         "kept_periods": kept_periods,
         "removed_periods": removed_periods,
         "rows": detail,
