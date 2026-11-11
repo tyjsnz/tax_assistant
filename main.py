@@ -14,6 +14,8 @@ Web 界面是主要使用方式（``.venv/bin/streamlit run ui/streamlit_app.py`
     python main.py settlement --year 2026 --save-inputs entertainment_actual=10000 employees=5
     python main.py cit-annual --year 2026
     python main.py employees
+    python main.py payroll-scan
+    python main.py correction-plan --employee EMP000001
     python main.py payroll --period 2026-11 --build --calc --confirm
     python main.py iit-return --period 2026-11
     python main.py companies
@@ -398,6 +400,78 @@ def cmd_employee_delete(args: argparse.Namespace) -> int:
         return 1
     employees.delete_employee(args.id)
     print(f"\n🗑️ 已删除员工 {args.id}")
+    return 0
+
+
+def cmd_payroll_scan(args: argparse.Namespace) -> int:
+    """扫描离职后仍申报工资的员工。"""
+    from ledger import corrections
+
+    result = corrections.scan_departed_overpayments()
+    if args.json:
+        _print_json(result)
+        return 0
+    summary = result["summary"]
+    print("\n🧯 离职员工多申报扫描")
+    print("-" * 96)
+    if not result["items"]:
+        print("  ✅ 未发现「已离职但离职后仍有工资/个税申报」的记录。")
+        return 0
+    print(f"  {'员工':<10}{'离职日期':<12}{'需更正月份':<24}{'涉及工资':>12}{'已预扣个税':>10}")
+    for item in result["items"]:
+        print(
+            f"  {item['employee_name'][:8]:<10}{item['leave_date']:<12}"
+            f"{'、'.join(item['periods'])[:22]:<24}{item['income_total']:>12,.2f}{item['tax_withheld']:>10,.2f}"
+        )
+    print("-" * 96)
+    print(f"  涉及员工 {summary['employees']} 人 · 月份 {summary['months']} 个 · "
+          f"工资 {summary['income']:,.2f} 元 · 已预扣个税 {summary['tax']:,.2f} 元")
+    print("  下一步：python main.py correction-plan --employee <员工编号> 生成更正操作单")
+    print(f"  {config.DISCLAIMER}")
+    return 0
+
+
+def cmd_correction_plan(args: argparse.Namespace) -> int:
+    """生成离职多申报更正方案（逐月测算 + 操作单导出）。"""
+    from ledger import corrections
+
+    if args.all:
+        plans = corrections.scan_and_plan_all()
+        if not plans:
+            print("\n✅ 未发现需要更正的离职员工记录。")
+            return 0
+        out_dir = Path(args.out_dir or config.EXPORT_DIR)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        print(f"\n📋 为 {len(plans)} 名员工生成更正操作单：")
+        for plan in plans:
+            path = corrections.export_correction_plan(plan, Path(out_dir) / f"离职多申报更正操作单_{plan['employee_name']}.xlsx")
+            totals = plan["totals"]
+            print(f"  - {plan['employee_name']}：需更正 {totals['months_to_correct']} 个月，"
+                  f"预计多缴个税 {totals['tax_refund']:,.2f} 元 → {path}")
+        print(f"  {config.DISCLAIMER}")
+        return 0
+
+    if not args.employee:
+        print("请指定 --employee 员工编号，或使用 --all 批量生成。")
+        return 1
+    plan = corrections.build_correction_plan(args.employee, late_fee_days=args.late_fee_days)
+    path = corrections.export_correction_plan(plan, args.out or None)
+    totals = plan["totals"]
+    print(f"\n🧯 离职多申报更正方案：{plan['employee_name']}（离职日期 {plan['leave_date']}）")
+    print("-" * 96)
+    print(f"  需更正月份：{'、'.join(plan['removed_periods']) or '无'}")
+    print(f"  原申报收入 {totals['original_income']:,.2f} → 更正后 {totals['corrected_income']:,.2f} 元")
+    print(f"  原已预扣个税 {totals['original_tax']:,.2f} → 更正后 {totals['corrected_tax']:,.2f} 元")
+    print(f"  预计多缴个税（可退）{totals['tax_refund']:,.2f} 元；预计少缴个税（需补）{totals['tax_payable']:,.2f} 元")
+    print(f"  企业所得税影响：小微 5% 约 {plan['cit_impact']['small_low_profit_tax']:,.2f} 元；"
+          f"一般 25% 约 {plan['cit_impact']['standard_tax']:,.2f} 元")
+    print("\n  操作步骤：")
+    for step in plan["steps"]:
+        print(f"    {step}")
+    for warning in plan["warnings"]:
+        print(f"  ⚠️ {warning}")
+    print(f"\n📦 已导出操作单：{path}")
+    print(f"  {config.DISCLAIMER}")
     return 0
 
 
@@ -990,6 +1064,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_emp_delete.add_argument("--id", required=True)
     p_emp_delete.add_argument("--yes", action="store_true")
     p_emp_delete.set_defaults(func=cmd_employee_delete)
+
+    p_scan = sub.add_parser("payroll-scan", help="扫描离职后仍申报工资的员工")
+    p_scan.add_argument("--json", action="store_true")
+    p_scan.set_defaults(func=cmd_payroll_scan)
+
+    p_correction = sub.add_parser("correction-plan", help="生成离职多申报更正方案/操作单")
+    p_correction.add_argument("--employee", default=None, help="员工编号；与 --all 二选一")
+    p_correction.add_argument("--all", action="store_true", help="为所有异常员工批量生成")
+    p_correction.add_argument("--out", default=None, help="单人操作单导出路径")
+    p_correction.add_argument("--out-dir", default=None, help="批量导出目录")
+    p_correction.add_argument("--late-fee-days", type=int, default=0, help="需补税时估算滞纳金天数")
+    p_correction.add_argument("--json", action="store_true")
+    p_correction.set_defaults(func=cmd_correction_plan)
 
     p_payroll = sub.add_parser("payroll", help="月度工资表：生成/计算/确认/零申报/查看")
     p_payroll.add_argument("--period", required=True, help="月份，如 2026-11")

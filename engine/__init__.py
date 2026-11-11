@@ -15,6 +15,13 @@ from engine.cit_settlement import (
     get_settlement_sources,
 )
 from engine.corporate_tax import calc_cit_prepay, calc_corp_tax
+from engine.payroll_correction import (
+    LATE_FEE_DAILY_RATE,
+    calc_correction_plan,
+    correction_periods,
+    estimate_cit_impact,
+    estimate_late_fee,
+)
 from engine.disability_fund import (
     DISABILITY_SOURCES,
     EXEMPTION_EMPLOYEE_THRESHOLD,
@@ -92,6 +99,11 @@ __all__ = [
     "calc_vat",
     "calc_corp_tax",
     "calc_cit_prepay",
+    "calc_correction_plan",
+    "estimate_cit_impact",
+    "estimate_late_fee",
+    "correction_periods",
+    "LATE_FEE_DAILY_RATE",
     "calc_disability_fund",
     "get_disability_sources",
     "DISABILITY_SOURCES",

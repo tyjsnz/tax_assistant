@@ -1061,6 +1061,203 @@ def _render_iit_return_tab() -> None:
     theme.disclaimer()
 
 
+
+
+# =============================================================================
+# 离职与纠错（P1-E）
+# =============================================================================
+def _render_correction_tab() -> None:
+    """离职后多申报扫描、更正方案与个税异议申诉台账。"""
+    st.caption(
+        "员工离职后仍做工资/申报个税时：先停申报，再逐月更正；员工个税 APP 撤销申诉不等于数据已更正。"
+        "本页只做扫描、测算与操作单，实际更正请在自然人电子税务局（扣缴端）完成。"
+    )
+    try:
+        from ledger import corrections, employees as employee_api
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"离职纠错模块不可用：{exc}")
+        return
+
+    try:
+        scan = corrections.scan_departed_overpayments()
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"扫描失败：{exc}")
+        return
+    summary = scan.get("summary") or {}
+    ui.metric_row(
+        [
+            {"label": "涉及员工", "value": f"{int(summary.get('employees') or 0)} 人"},
+            {"label": "需更正月份", "value": f"{int(summary.get('months') or 0)} 个"},
+            {"label": "涉及工资", "value": F.fmt_money(summary.get("income"))},
+            {"label": "已预扣个税", "value": F.fmt_money(summary.get("tax"))},
+        ],
+        columns=4,
+    )
+
+    plan = st.session_state.get("correction_plan")
+    if not scan.get("items"):
+        st.success("✅ 未发现「已离职但离职后仍有工资/个税申报」的记录。", icon="🧯")
+    else:
+        frame = pd.DataFrame(
+            [
+                {
+                    "员工": item["employee_name"],
+                    "离职日期": item["leave_date"],
+                    "需更正月份": "、".join(item["periods"]),
+                    "涉及工资": item["income_total"],
+                    "已预扣个税": item["tax_withheld"],
+                    "记录状态": "、".join(item["row_statuses"]),
+                }
+                for item in scan["items"]
+            ]
+        )
+        st.dataframe(frame, width="stretch", hide_index=True)
+        options = {f"{item['employee_name']}（{item['employee_id']}）": item["employee_id"] for item in scan["items"]}
+        selected = st.selectbox("选择员工生成更正方案", list(options), key="correction_employee")
+        if st.button("🧮 生成更正方案", key="correction_build", type="primary", width="stretch"):
+            try:
+                st.session_state["correction_plan"] = corrections.build_correction_plan(options[selected])
+                plan = st.session_state["correction_plan"]
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"生成失败：{exc}")
+
+    if plan:
+        totals = plan.get("totals") or {}
+        ui.section("更正方案", f"{plan.get('employee_name')} · 离职日期 {plan.get('leave_date')}")
+        ui.metric_row(
+            [
+                {"label": "需更正月份", "value": f"{int(totals.get('months_to_correct') or 0)} 个"},
+                {"label": "多缴个税（可退）", "value": F.fmt_money(totals.get("tax_refund"))},
+                {"label": "少缴个税（需补）", "value": F.fmt_money(totals.get("tax_payable"))},
+                {"label": "涉及多列工资", "value": F.fmt_money(totals.get("removed_wage_total"))},
+            ],
+            columns=4,
+        )
+        cit = plan.get("cit_impact") or {}
+        st.info(
+            f"企业所得税影响估算：小微 5% 约 {F.fmt_money(cit.get('small_low_profit_tax'))} 元；"
+            f"一般 25% 约 {F.fmt_money(cit.get('standard_tax'))} 元。"
+        )
+        detail = pd.DataFrame(
+            [
+                {
+                    "所属期": row["period"],
+                    "处理动作": row["action"],
+                    "原申报收入": row["original_income"],
+                    "更正后收入": row["corrected_income"],
+                    "原已预扣": row["original_tax"],
+                    "更正后应预扣": row["corrected_tax"],
+                    "差额": row["tax_diff"],
+                }
+                for row in plan.get("rows") or []
+            ]
+        )
+        st.dataframe(detail, width="stretch", hide_index=True)
+        with st.expander("扣缴端更正操作步骤（逐月）", expanded=True):
+            for index, step in enumerate(plan.get("steps") or [], start=1):
+                st.markdown(f"{index}. {step}")
+        for warning in plan.get("warnings") or []:
+            st.warning(warning)
+        try:
+            path = corrections.export_correction_plan(plan)
+            st.download_button(
+                "📊 导出《更正操作单》Excel",
+                data=Path(path).read_bytes(),
+                file_name=Path(path).name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="correction_download",
+                width="stretch",
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"导出失败：{exc}")
+
+    st.divider()
+    ui.section("个税异议申诉台账", "记录员工在个税 APP 的申诉、撤销、沟通与更正闭环")
+    try:
+        disputes = corrections.list_disputes()
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"申诉台账不可用：{exc}")
+        disputes = []
+    if disputes:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "编号": row.get("id"),
+                        "员工": row.get("employee_name"),
+                        "申诉类型": row.get("dispute_type"),
+                        "涉及月份": row.get("period"),
+                        "申诉日期": row.get("filed_date"),
+                        "状态": row.get("status"),
+                        "撤销日期": row.get("withdrawn_date"),
+                        "处理结果": row.get("resolution"),
+                    }
+                    for row in disputes
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        dispute_options = {
+            f"{row.get('employee_name')} · {row.get('dispute_type')} · {row.get('filed_date')}（{row.get('id')}）": row
+            for row in disputes
+        }
+        selected_dispute = st.selectbox("选择申诉记录更新状态", list(dispute_options), key="dispute_selected")
+        new_status = st.selectbox("处理状态", corrections.DISPUTE_STATUSES, key="dispute_status")
+        resolution = st.text_input("处理结果/备注", key="dispute_resolution")
+        cols = st.columns(2)
+        with cols[0]:
+            if st.button("💾 更新申诉状态", key="dispute_update", width="stretch"):
+                try:
+                    corrections.update_dispute(
+                        str(dispute_options[selected_dispute].get("id")),
+                        {"status": new_status, "resolution": resolution},
+                    )
+                    st.success("已更新")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"更新失败：{exc}")
+        with cols[1]:
+            if st.button("🗑️ 删除申诉记录", key="dispute_delete", width="stretch"):
+                try:
+                    corrections.delete_dispute(str(dispute_options[selected_dispute].get("id")))
+                    st.success("已删除")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"删除失败：{exc}")
+    else:
+        st.info("暂无申诉记录。员工撤销申诉后，建议在此登记留痕。")
+
+    with st.expander("➕ 新增申诉记录", expanded=False):
+        try:
+            people = employee_api.list_employees(status=None, include_left=True)
+        except Exception as exc:  # noqa: BLE001
+            people = []
+            st.warning(f"员工列表不可用：{exc}")
+        if not people:
+            st.caption("请先在「员工管理」录入员工。")
+        else:
+            people_map = {f"{item['name']}（{item['id']}）": item["id"] for item in people}
+            employee_label = st.selectbox("员工", list(people_map), key="dispute_employee")
+            dispute_type = st.selectbox("申诉类型", corrections.DISPUTE_TYPES, key="dispute_type")
+            filed_date = st.date_input("申诉日期", value=date.today(), key="dispute_filed")
+            period = st.text_input("涉及月份（可选，如 2026-03）", key="dispute_period")
+            resolution = st.text_input("处理结果/说明", key="dispute_new_resolution")
+            if st.button("保存申诉记录", key="dispute_add", type="primary", width="stretch"):
+                try:
+                    corrections.add_dispute(
+                        people_map[employee_label],
+                        dispute_type,
+                        str(filed_date),
+                        period=period,
+                        resolution=resolution,
+                    )
+                    st.success("已登记申诉记录")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"登记失败：{exc}")
+    st.caption("提示：员工撤销路径——个人所得税 APP → 服务 → 收入纳税明细查询 → 异议申诉记录 → 撤销申诉。撤销后请保存截图。")
+
 # =============================================================================
 # 页面入口
 # =============================================================================
@@ -1075,10 +1272,12 @@ def render() -> None:
     _show_flash()
     if not PA.any_ready():
         ui.module_missing("员工与工资", "ledger.employees / ledger.payroll / filing.iit_return", detail=PA.missing_detail())
-    tabs = st.tabs(["👥 员工管理", "💰 月度工资表", "📋 扣缴申报辅助表"])
+    tabs = st.tabs(["👥 员工管理", "💰 月度工资表", "📋 扣缴申报辅助表", "🧯 离职与纠错"])
     with tabs[0]:
         _render_employee_tab()
     with tabs[1]:
         _render_payroll_tab()
     with tabs[2]:
         _render_iit_return_tab()
+    with tabs[3]:
+        _render_correction_tab()

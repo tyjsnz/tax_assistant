@@ -533,6 +533,26 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("updated_at", "str", "更新时间"),
         ],
     },
+    # 个税异议申诉台账（P1-E：离职多申报/员工投诉处理）
+    "tax_disputes": {
+        "file": "tax_disputes.csv",
+        "prefix": "DSP",
+        "label": "个税异议申诉台账",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("employee_id", "str", "员工编号"),
+            _col("employee_name", "str", "员工姓名"),
+            _col("period", "str", "涉及月份"),
+            _col("dispute_type", "str", "申诉类型"),
+            _col("filed_date", "str", "申诉日期"),
+            _col("status", "str", "处理状态"),
+            _col("withdrawn_date", "str", "撤销日期"),
+            _col("resolution", "str", "处理结果"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+            _col("updated_at", "str", "更新时间"),
+        ],
+    },
     # 会计期间（月结/季结状态机，P0-3）
     "periods": {
         "file": "periods.csv",
