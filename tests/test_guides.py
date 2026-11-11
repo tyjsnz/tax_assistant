@@ -8,9 +8,9 @@ from guidebooks import content
 from guidebooks.pdf import build_guide_pdf
 
 
-def test_three_workflows_content():
+def test_five_workflows_content():
     workflows = content.list_workflows()
-    assert [item["id"] for item in workflows] == ["vat", "iit", "correction"]
+    assert [item["id"] for item in workflows] == ["vat", "iit", "cit_prepay", "settlement", "correction"]
     for workflow in workflows:
         assert len(workflow["steps"]) == 5
         assert workflow["official_links"]
@@ -33,6 +33,35 @@ def test_build_guide_pdf(tmp_path):
         assert "增值税" in text and "离职" in text
     except ImportError:  # pragma: no cover
         pass
+
+
+def test_local_shot_save_list_delete(tmp_path):
+    import base64
+
+    from guidebooks import store as shot_store
+
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    record = shot_store.save_shot("vat", 2, png, "my-vat.png", "这里填不含税销售额")
+    path = shot_store.resolve_path(record)
+    assert path.exists()
+    shots = shot_store.list_shots("vat", 2)
+    assert any(item["id"] == record["id"] for item in shots)
+    shot_store.delete_shot(record["id"])
+    assert not path.exists()
+    assert not any(item["id"] == record["id"] for item in shot_store.list_shots("vat", 2))
+
+
+def test_local_shot_rejects_bad_type_and_size():
+    import pytest
+
+    from guidebooks import store as shot_store
+
+    with pytest.raises(ValueError):
+        shot_store.save_shot("vat", 1, b"abc", "evil.exe")
+    with pytest.raises(ValueError):
+        shot_store.save_shot("vat", 1, b"x" * (shot_store.MAX_BYTES + 1), "big.png")
 
 
 def test_pdf_only_selected_workflow(tmp_path):

@@ -611,6 +611,22 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("updated_at", "str", "更新时间"),
         ],
     },
+    # 操作指引本地截图备注（v1.17，仅本地，不上传）
+    "guide_shots": {
+        "file": "guide_shots.csv",
+        "prefix": "GS",
+        "label": "操作指引截图备注",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("workflow_id", "str", "流程"),
+            _col("step_index", "int", "步骤"),
+            _col("file_name", "str", "原文件名"),
+            _col("stored_name", "str", "本地文件"),
+            _col("note", "str", "备注"),
+            _col("created_at", "str", "创建时间"),
+            _col("updated_at", "str", "更新时间"),
+        ],
+    },
     # 会计期间（月结/季结状态机，P0-3）
     "periods": {
         "file": "periods.csv",

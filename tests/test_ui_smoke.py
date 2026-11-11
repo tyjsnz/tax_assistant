@@ -615,6 +615,6 @@ def test_guides_page_has_three_workflows_and_pdf_button() -> None:
     at.radio(key="nav").set_value("📖 操作指引").run()
     _assert_clean(at, "操作指引")
     options = list(at.radio(key="guide_workflow").options)
-    assert len(options) == 3
+    assert len(options) == 5
     body = "\n".join(str(element.value) for element in at.markdown)
     assert "增值税及附加税费申报" in body or "增值税及附加税费申报（小规模纳税人" in body

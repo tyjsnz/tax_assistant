@@ -63,7 +63,63 @@ def _render_step(workflow_id: str, index: int, step: dict) -> None:
         if tip:
             st.info(f"💡 {tip}")
         done = st.checkbox(f"第 {index} 步已完成", key=f"guide_{workflow_id}_{index}")
+        _render_local_shots(workflow_id, index)
         return done
+
+
+def _render_local_shots(workflow_id: str, step_index: int) -> None:
+    """本地截图备注：只存当前公司目录，不上传、不写入 PDF。"""
+    with st.expander("📷 我的截图备注（仅本地）", expanded=False):
+        st.caption(
+            "把你自己操作时的页面截图存在本地，方便对照；截图只保存在当前公司账套，"
+            "不上传、不随安装包分发，也不会写入导出 PDF。请先自行遮盖企业名称、税号、金额等敏感信息。"
+        )
+        try:
+            from guidebooks import store as shot_store
+
+            shots = shot_store.list_shots(workflow_id, step_index)
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"本地截图不可用：{exc}")
+            return
+        for shot in shots:
+            cols = st.columns([2, 3])
+            with cols[0]:
+                try:
+                    st.image(str(shot_store.resolve_path(shot)), width=260)
+                except Exception:  # noqa: BLE001
+                    st.caption("图片文件缺失")
+            with cols[1]:
+                st.caption(f"备注：{shot.get('note') or '（无）'}")
+                st.caption(f"文件：{shot.get('file_name') or ''} · {shot.get('created_at') or ''}")
+                if st.button("🗑️ 删除", key=f"guide_shot_del_{shot.get('id')}"):
+                    try:
+                        shot_store.delete_shot(str(shot.get("id")))
+                        st.rerun()
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"删除失败：{exc}")
+        uploaded = st.file_uploader(
+            "上传截图（PNG/JPG/WebP，≤8 MB）",
+            type=["png", "jpg", "jpeg", "webp"],
+            key=f"guide_shot_upload_{workflow_id}_{step_index}",
+        )
+        note = st.text_input(
+            "截图备注（可选）",
+            key=f"guide_shot_note_{workflow_id}_{step_index}",
+            placeholder="例如：这里填不含税销售额",
+        )
+        if uploaded is not None and st.button(
+            "💾 保存截图备注",
+            key=f"guide_shot_save_{workflow_id}_{step_index}",
+            type="primary",
+        ):
+            try:
+                from guidebooks import store as shot_store
+
+                shot_store.save_shot(workflow_id, step_index, uploaded.getvalue(), uploaded.name, note)
+                st.success("已保存到本地。")
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"保存失败：{exc}")
 
 
 def _render_workflow(workflow: dict) -> None:
