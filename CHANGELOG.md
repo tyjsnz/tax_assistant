@@ -3,6 +3,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循语义化版本 `MAJOR.MINOR.PATCH`。
 
+## [v1.29.1] - 2026-11-12
+
+### 修复
+- 补充 `cryptography` 依赖，修复 CI 中交接包加密模块导入失败。
+- 全量 838 项测试通过；官网/下载包/在线演示更新 v1.29.1。
+
 ## [v1.29.0] - 2026-11-12
 
 ### 新增
