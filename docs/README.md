@@ -22,7 +22,7 @@
 | [CONTRACTS_P1_C.md](CONTRACTS_P1_C.md) | 开发者 | 汇算清缴契约 |
 | [CONTRACTS_P1_D.md](CONTRACTS_P1_D.md) | 开发者 | 工商年报/残保金契约 |
 
-另见：[RELEASE_NOTES_v1.25.0.md](RELEASE_NOTES_v1.25.0.md)（当前版本发布说明）、[v1.24.2](RELEASE_NOTES_v1.24.2.md)、[v1.24.1](RELEASE_NOTES_v1.24.1.md)、[v1.24.0](RELEASE_NOTES_v1.24.0.md)。
+另见：[RELEASE_NOTES_v1.26.0.md](RELEASE_NOTES_v1.26.0.md)（当前版本发布说明）、[v1.25.0](RELEASE_NOTES_v1.25.0.md)、[v1.24.2](RELEASE_NOTES_v1.24.2.md)、[v1.24.1](RELEASE_NOTES_v1.24.1.md)。
 
 在线：官网 https://tax.flacn.net ｜ 演示 https://tax.flacn.net/app/ ｜ 源码 https://github.com/tyjsnz/tax_assistant
 

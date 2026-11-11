@@ -40,6 +40,10 @@ def default_settings() -> dict[str, Any]:
         "email_mailbox": "INBOX",
         "email_days": 30,
         "auto_match": True,
+        "auto_scan_on_start": False,
+        "auto_scan_interval_hours": 6,
+        "auto_scan_email": False,
+        "last_scan_at": "",
     }
 
 
@@ -246,6 +250,46 @@ def collect_email(settings: dict[str, Any] | None = None, *, limit: int = 50) ->
     return result
 
 
+def _parse_last_scan(value: str) -> Any:
+    from datetime import datetime
+
+    try:
+        return datetime.strptime(str(value or ""), "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def maybe_auto_scan(*, force: bool = False) -> dict[str, Any]:
+    """打开系统时自动扫描一次（默认关闭，按间隔节流）。
+
+    只做本地操作；邮箱扫描默认不自动执行，避免启动时等待。
+    """
+    from datetime import datetime, timedelta
+
+    settings = load_settings()
+    if not force and not bool(settings.get("auto_scan_on_start")):
+        return {"skipped": True, "reason": "未开启启动时自动扫描"}
+    last = _parse_last_scan(str(settings.get("last_scan_at") or ""))
+    interval = max(int(settings.get("auto_scan_interval_hours") or 6), 1)
+    if not force and last and datetime.now() - last < timedelta(hours=interval):
+        return {"skipped": True, "reason": f"距离上次扫描不足 {interval} 小时"}
+    result: dict[str, Any] = {"folder": None, "email": None, "errors": []}
+    folder = str(settings.get("folder_path") or "").strip()
+    if folder:
+        try:
+            result["folder"] = collect_folder(folder, auto_match=bool(settings.get("auto_match", True)))
+        except Exception as exc:  # noqa: BLE001
+            result["errors"].append(f"文件夹扫描失败：{exc}")
+    if bool(settings.get("auto_scan_email")) and str(settings.get("email_host") or ""):
+        try:
+            result["email"] = collect_email(settings)
+        except Exception as exc:  # noqa: BLE001
+            result["errors"].append(f"邮箱拉取失败：{exc}")
+    settings["last_scan_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    save_settings(settings)
+    return result
+
+
 def recent_logs(limit: int = 50) -> list[dict[str, Any]]:
     rows = sorted(store.table(LOG_TABLE).read(), key=lambda row: str(row.get("created_at") or ""), reverse=True)
     return rows[: int(limit)]
@@ -253,6 +297,6 @@ def recent_logs(limit: int = 50) -> list[dict[str, Any]]:
 
 __all__ = [
     "default_settings", "load_settings", "save_settings",
-    "collect_folder", "collect_email", "test_email", "recent_logs",
+    "collect_folder", "collect_email", "test_email", "maybe_auto_scan", "recent_logs",
     "ALLOWED_EXTENSIONS", "INBOX_DIR", "SETTINGS_PATH",
 ]

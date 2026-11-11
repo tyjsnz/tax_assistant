@@ -22,10 +22,22 @@ def _render_folder() -> None:
         help="需要先把电子税务局「全量发票查询」导出的文件放到这个文件夹",
     )
     auto_match = st.checkbox("导入后自动生成匹配建议", value=bool(settings.get("auto_match", True)), key="collector_folder_auto_match")
+    auto_cols = st.columns(3)
+    with auto_cols[0]:
+        auto_scan = st.checkbox("打开系统时自动扫描文件夹", value=bool(settings.get("auto_scan_on_start")), key="collector_auto_scan")
+    with auto_cols[1]:
+        auto_email = st.checkbox("自动扫描时同时拉取邮箱", value=bool(settings.get("auto_scan_email")), key="collector_auto_email")
+    with auto_cols[2]:
+        interval = st.number_input("最短间隔（小时）", min_value=1, max_value=168, value=int(settings.get("auto_scan_interval_hours") or 6), key="collector_auto_interval")
+    st.caption(f"上次自动扫描：{settings.get('last_scan_at') or '尚未扫描'}")
     cols = st.columns(2)
     with cols[0]:
         if st.button("💾 保存文件夹设置", key="collector_folder_save", width="stretch"):
-            collector.save_settings({**settings, "folder_path": folder, "auto_match": auto_match})
+            collector.save_settings({
+                **settings, "folder_path": folder, "auto_match": auto_match,
+                "auto_scan_on_start": auto_scan, "auto_scan_email": auto_email,
+                "auto_scan_interval_hours": int(interval),
+            })
             st.success("已保存到本地。")
     with cols[1]:
         if st.button("📥 立即扫描并导入", key="collector_folder_scan", type="primary", width="stretch"):
@@ -97,6 +109,58 @@ def _render_email() -> None:
                 st.error(f"拉取失败：{exc}")
 
 
+def _render_dashboard() -> None:
+    """发票对账看板：归集/待匹配/重复/疑似红冲作废/跨期。"""
+    from ingest import reconciliation
+
+    try:
+        data = reconciliation.build_dashboard()
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"对账看板不可用：{exc}")
+        return
+    st.caption(
+        "本看板只基于**已归集到系统**的发票统计；“未归集”无法从系统外部感知，"
+        "请以电子税务局全量发票查询为完整口径。"
+    )
+    cols = st.columns(4)
+    with cols[0]:
+        st.metric("已归集发票", f"{data['total']} 张")
+    with cols[1]:
+        st.metric(f"{data['current_month']} 新增", f"{data['this_month']} 张")
+    with cols[2]:
+        st.metric("待匹配", f"{data['pending']} 张")
+    with cols[3]:
+        st.metric("已匹配/入账", f"{data['matched']} 张")
+
+    sections = [
+        ("🔁 重复发票号", data.get("duplicate_numbers"), ["invoice_no", "count"]),
+        ("⚠️ 疑似红冲/作废/负数", data.get("suspected_red"), ["invoice_no", "seller", "amount", "note"]),
+        ("📅 跨期发票（早于本季度）", data.get("cross_period"), ["invoice_no", "invoice_date", "seller", "amount"]),
+        ("❌ 归集失败记录", data.get("failed_logs"), ["created_at", "source", "file_name", "message"]),
+    ]
+    for title, rows, keys in sections:
+        st.markdown(f"**{title}**")
+        if not rows:
+            st.caption("暂无。")
+            continue
+        display = []
+        for row in rows:
+            display.append({
+                {"invoice_no": "发票号码", "count": "次数", "seller": "销售方", "amount": "金额", "note": "说明",
+                 "invoice_date": "开票日期", "created_at": "时间", "source": "来源", "file_name": "文件", "message": "说明"}[key]: row.get(key)
+                for key in keys
+            })
+        st.dataframe(display, width="stretch", hide_index=True)
+
+    if data.get("skipped_logs"):
+        st.caption(f"归集日志中另有 {data['skipped_logs']} 条重复/跳过记录（已自动去重，不会重复入账）。")
+    st.info(
+        "建议每月核对一次：电子税务局全量发票查询的发票总数，应 ≥ 系统已归集数；"
+        "差异可能是尚未导出/未发邮件/归集失败，可在「归集记录」排查。",
+        icon="🧾",
+    )
+
+
 def _render_logs() -> None:
     try:
         rows = collector.recent_logs(100)
@@ -132,12 +196,14 @@ def render() -> None:
         "本页采用两条合规路径：**手工导出到文件夹** + **专用邮箱 IMAP 只读拉取**。",
         icon="🔐",
     )
-    tabs = st.tabs(["📁 本地文件夹", "📧 邮箱归集", "📋 归集记录"])
+    tabs = st.tabs(["📁 本地文件夹", "📧 邮箱归集", "📊 对账看板", "📋 归集记录"])
     with tabs[0]:
         _render_folder()
     with tabs[1]:
         _render_email()
     with tabs[2]:
+        _render_dashboard()
+    with tabs[3]:
         _render_logs()
     st.caption("导入后请到「📥 票据与流水」核对；高置信匹配可到「⚡ AI 代办」一键入账。")
     theme.disclaimer()

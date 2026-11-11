@@ -187,6 +187,19 @@ def main() -> None:
         },
     )
     theme.apply()
+    # 发票归集：打开系统时自动扫描一次（默认关闭，按设置节流）
+    if not st.session_state.get("_invoice_auto_scan_done"):
+        st.session_state["_invoice_auto_scan_done"] = True
+        try:
+            from ingest import collector
+
+            result = collector.maybe_auto_scan()
+            if result and not result.get("skipped"):
+                imported = int((result.get("folder") or {}).get("imported") or 0) + int((result.get("email") or {}).get("imported") or 0)
+                if imported:
+                    st.toast(f"📬 自动归集发票：新导入 {imported} 张", icon="📬")
+        except Exception:  # noqa: BLE001 - 自动归集失败不影响使用
+            pass
     page = _render_sidebar()
     _render_page(page)
 
