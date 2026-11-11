@@ -11,7 +11,7 @@
 * 政策类回答必须带文号（source）、生效日期（effective_date）与检索出处。
 
 政策文件目录：``config.POLICY_DIR``（默认 ``knowledge/policy_files/``），
-每篇格式见 ``docs/CONTRACTS.md`` 5.3 与《报税Agent开发规范.md》5.2。
+每篇格式见 ``docs/CONTRACTS.md`` 5.3 与项目开发规范（本地）5.2。
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """申报表核对：把 OCR / 手工栏次值与台账标准答案逐栏比对。
 
-流程（对应《报税Agent开发规范.md》Module 4）：
+流程（对应项目开发规范（本地）Module 4）：
 
 ```
 截图 → 本地 OCR（ocr.extractor）→ 栏次映射（ocr.field_mapper）

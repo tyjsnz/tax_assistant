@@ -41,3 +41,6 @@ data/logs/
 dist/
 site/download/*.zip
 site/download/*.tar.gz
+
+# 内部开发规范（仅本地使用，不入库）
+/报税Agent开发规范.md
