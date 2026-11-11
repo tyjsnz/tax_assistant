@@ -105,11 +105,14 @@ class TestEmployees:
         assert stored["id_card_masked"] == "530128****1234"
         assert "530128199001011234" not in str(stored)
 
-    def test_update_status_fills_leave_date(self):
+    def test_update_status_requires_leave_date(self):
         employee = _add_employee()
-        left = employees.update_employee(employee["id"], {"status": "离职"})
+        with pytest.raises(ValueError, match="离职日期"):
+            employees.update_employee(employee["id"], {"status": "离职"})
+
+        left = employees.update_employee(employee["id"], {"status": "离职", "leave_date": "2026-01-31"})
         assert left["status"] == "离职"
-        assert left["leave_date"] == config.today().isoformat()
+        assert left["leave_date"] == "2026-01-31"
 
         active_again = employees.update_employee(employee["id"], {"status": "在职"})
         assert active_again["status"] == "在职"
@@ -118,7 +121,7 @@ class TestEmployees:
     def test_list_employee_filters(self):
         active = _add_employee({"name": "在职A"})
         left = _add_employee({"name": "离职B"})
-        employees.update_employee(left["id"], {"status": "离职"})
+        employees.update_employee(left["id"], {"status": "离职", "leave_date": "2026-01-31"})
         assert [item["name"] for item in employees.list_employees()] == ["在职A"]
         assert [item["name"] for item in employees.list_employees("离职")] == ["离职B"]
         assert len(employees.list_employees(None)) == 2
@@ -158,7 +161,7 @@ class TestEmployees:
         _add_employee({"name": "甲", "department": "研发部", "social_insurance_base": 10000, "housing_fund_base": 5000})
         _add_employee({"name": "乙", "department": "研发部", "social_insurance_base": 8000, "housing_fund_base": 4000})
         left = _add_employee({"name": "丙", "department": "综合部", "social_insurance_base": 6000})
-        employees.update_employee(left["id"], {"status": "离职"})
+        employees.update_employee(left["id"], {"status": "离职", "leave_date": "2026-01-31"})
         summary = employees.summarize_employees()
         assert summary["total"] == 3
         assert summary["active"] == 2

@@ -63,7 +63,7 @@ class TestPayrollFlow:
         masked = employees.mask_id_card("530101199001011234")
         assert "199001011234" not in masked
         # 离职
-        left = employees.update_employee(created[1]["id"], {"status": "离职"})
+        left = employees.update_employee(created[1]["id"], {"status": "离职", "leave_date": "2026-02-15"})
         assert left["status"] == "离职" and left["leave_date"]
         assert employees.summarize_employees()["active"] == 1
 

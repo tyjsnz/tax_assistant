@@ -107,6 +107,15 @@ def special_deduction_monthly(employee: dict[str, Any]) -> float:
     return round2(calc_special_deduction(breakdown)["monthly_total"])
 
 
+def _validate_leave_date(record: dict[str, Any]) -> None:
+    """员工状态为「离职」时必须填写离职日期：用于停发工资、个税更正与扫描依据。"""
+    if str(record.get("status") or "") == "离职" and not str(record.get("leave_date") or ""):
+        raise ValueError(
+            "员工状态为「离职」时必须填写离职日期（实际最后工作日）。"
+            "离职日期用于停发工资、个税更正与离职后申报扫描；如确实忘记，请按银行流水/考勤/社保减员月份补录。"
+        )
+
+
 def _build_record(payload: dict[str, Any], *, base: dict[str, Any] | None = None) -> dict[str, Any]:
     """把新增/修改的入参规范为可写库的员工记录。"""
     if not isinstance(payload, dict):
@@ -129,8 +138,6 @@ def _build_record(payload: dict[str, Any], *, base: dict[str, Any] | None = None
     else:
         hire_date = models.normalize_date(None)
     leave_date = _non_empty_date(source.get("leave_date"))
-    if status == "离职" and not leave_date:
-        leave_date = models.normalize_date(None)
 
     id_card_source = payload.get("id_card", source.get("id_card_masked"))
     id_card_masked = mask_id_card(id_card_source)
@@ -162,6 +169,7 @@ def _build_record(payload: dict[str, Any], *, base: dict[str, Any] | None = None
 def add_employee(payload: dict[str, Any]) -> dict[str, Any]:
     """新增员工档案，返回保存后的记录；姓名必填，身份证只保存脱敏值。"""
     record = _build_record(payload)
+    _validate_leave_date(record)
     added = table(TABLE_NAME).append(record)
     log_user_action(
         "新增员工",
@@ -205,6 +213,7 @@ def update_employee(employee_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     if _text(payload.get("status")) == "在职" and "leave_date" not in payload:
         payload["leave_date"] = ""
     record = _build_record(payload, base=current)
+    _validate_leave_date(record)
     updated = table(TABLE_NAME).update(employee_id, record)
     log_user_action(
         "修改员工",
@@ -236,6 +245,16 @@ def delete_employee(employee_id: str) -> bool:
 # =============================================================================
 # 汇总
 # =============================================================================
+def employees_without_leave_date() -> list[dict[str, Any]]:
+    """状态为「离职」但未填写离职日期的员工（历史/导入数据兜底检查）。"""
+    rows = [
+        row
+        for row in table(TABLE_NAME).read()
+        if _text(row.get("status")) == "离职" and not _text(row.get("leave_date"))
+    ]
+    return sorted(rows, key=lambda row: str(row.get("name") or ""))
+
+
 def summarize_employees() -> dict[str, Any]:
     """员工汇总：总人数、在职/离职人数、部门分布与在职员工社保/公积金基数合计。"""
     rows = table(TABLE_NAME).read()
@@ -276,6 +295,8 @@ def active_employees_for_month(period: str) -> list[dict[str, Any]]:
     for row in table(TABLE_NAME).read():
         hire_date = _text(row.get("hire_date"))
         leave_date = _text(row.get("leave_date"))
+        if _text(row.get("status")) == "离职" and not leave_date:
+            continue
         if hire_date and hire_date > end_text:
             continue
         if leave_date and leave_date <= start_text:
@@ -296,4 +317,5 @@ __all__ = [
     "special_deduction_monthly",
     "summarize_employees",
     "active_employees_for_month",
+    "employees_without_leave_date",
 ]

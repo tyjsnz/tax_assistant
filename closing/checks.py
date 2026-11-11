@@ -48,6 +48,7 @@ CHECK_KEYS: tuple[str, ...] = (
     "invoice_duplicates",
     "policy_period",
     "payroll_status",
+    "employee_leave_date",
     "annual_settlement",
 )
 
@@ -62,6 +63,7 @@ CHECK_NAMES: dict[str, str] = {
     "invoice_duplicates": "期间内发票无重复",
     "policy_period": "期间在已验证政策区间",
     "payroll_status": "工资表与个税状态",
+    "employee_leave_date": "离职员工离职日期完整",
     "annual_settlement": "年度汇算清缴提示",
 }
 
@@ -289,6 +291,30 @@ def _period_months(period: str) -> list[str]:
     return months
 
 
+def _check_employee_leave_date() -> dict[str, Any]:
+    """离职员工必须填写离职日期：避免「已离职但继续做工资/申报」。"""
+    try:
+        from ledger import employees as employees_module
+
+        missing = employees_module.employees_without_leave_date()
+    except (ValueError, KeyError) as exc:
+        return _check(
+            "employee_leave_date",
+            "WARNING",
+            f"离职日期检查执行失败：{exc}",
+            "请检查员工档案数据是否完整。",
+        )
+    if not missing:
+        return _check("employee_leave_date", "PASS", "离职员工均已填写离职日期。")
+    names = "、".join(str(item.get("name") or item.get("id")) for item in missing[:8])
+    return _check(
+        "employee_leave_date",
+        "WARNING",
+        f"有 {len(missing)} 名员工状态为「离职」但未填写离职日期：{names}。",
+        "请在「员工与工资 → 员工管理」补录实际离职日期；否则无法自动扫描离职后误申报，工资表也可能继续生成。",
+    )
+
+
 def _check_payroll_status(period: str) -> dict[str, Any]:
     """工资表状态检查：无工资但有在职 → WARNING；存在草稿行 → WARNING；已确认/已申报 → PASS。"""
     try:
@@ -391,6 +417,7 @@ def pre_close_checks(period: Any) -> dict[str, Any]:
         _check_invoice_duplicates(text),
         _check_policy_period(text),
         _check_payroll_status(text),
+        _check_employee_leave_date(),
         _check_annual_settlement(text),
     ]
     blocking = [check for check in checks if check["status"] == "ERROR"]

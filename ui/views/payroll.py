@@ -255,6 +255,9 @@ def _render_new_employee_form() -> None:
             position = st.text_input("岗位", key="payroll_new_position")
             hire_date = st.date_input("入职日期", value=config.today(), key="payroll_new_hire_date")
             status = st.selectbox("状态", PA.EMPLOYEE_STATUSES, index=0, key="payroll_new_status")
+            new_leave_date = st.date_input(
+                "离职日期（状态=离职时必填）", value=config.today(), key="payroll_new_leave_date"
+            )
             social_base = st.number_input(
                 "社保缴费基数（元）", min_value=0.0, step=100.0, format="%.2f", key="payroll_new_social"
             )
@@ -287,6 +290,7 @@ def _render_new_employee_form() -> None:
         "position": position.strip(),
         "hire_date": hire_date.isoformat(),
         "status": status,
+        "leave_date": new_leave_date.isoformat() if status == "离职" else "",
         "social_insurance_base": float(social_base),
         "housing_fund_base": float(fund_base),
         "special_deduction_json": _special_deduction_json_from_inputs(special_values),
@@ -352,7 +356,15 @@ def _render_edit_employee_form(employees: Sequence[dict]) -> None:
                 PA.EMPLOYEE_STATUSES,
                 index=_option_index(PA.EMPLOYEE_STATUSES, employee.get("status"), 0),
                 key=f"payroll_edit_status_{employee_id}",
-                help="改为「离职」时后端会自动补离职日期",
+                help="改为「离职」时必须填写离职日期（实际最后工作日）",
+            )
+            leave_raw = str(employee.get("leave_date") or "")
+            try:
+                leave_value = date.fromisoformat(leave_raw[:10]) if leave_raw else config.today()
+            except ValueError:
+                leave_value = config.today()
+            edit_leave_date = st.date_input(
+                "离职日期（状态=离职时必填）", value=leave_value, key=f"payroll_edit_leave_{employee_id}"
             )
             social_base = st.number_input(
                 "社保缴费基数（元）", min_value=0.0, step=100.0, format="%.2f",
@@ -395,6 +407,7 @@ def _render_edit_employee_form(employees: Sequence[dict]) -> None:
         "position": position.strip(),
         "hire_date": hire_date.isoformat(),
         "status": status,
+        "leave_date": edit_leave_date.isoformat() if status == "离职" else "",
         "social_insurance_base": float(social_base),
         "housing_fund_base": float(fund_base),
         "special_deduction_json": _special_deduction_json_from_inputs(special_values),
@@ -427,6 +440,9 @@ def _render_employee_actions(employees: Sequence[dict]) -> None:
     )
     employee = next((item for item in employees if str(item.get("id")) == str(selected_id)), {})
     is_left = str(employee.get("status")) == "离职"
+    leave_date = st.date_input(
+        "离职日期（标记离职必填）", value=date.today(), key="payroll_employee_leave_date"
+    )
     cols = st.columns([1, 1, 1, 3])
     with cols[0]:
         if st.button(
@@ -436,7 +452,7 @@ def _render_employee_actions(employees: Sequence[dict]) -> None:
             disabled=is_left or not PA.employees_ready(),
         ):
             try:
-                PA.update_employee(str(selected_id), {"status": "离职"})
+                PA.update_employee(str(selected_id), {"status": "离职", "leave_date": str(leave_date)})
             except Exception as exc:  # noqa: BLE001
                 st.error(f"标记离职失败：{exc}")
             else:

@@ -149,7 +149,7 @@ class TestPeriods:
         assert overview["status"] == "未结账"
         checklist = overview["checklist"]
         assert set(checklist) >= {"ok", "level", "total", "pass", "warning", "error"}
-        assert checklist["total"] == 11
+        assert checklist["total"] == 12
 
 
 # =============================================================================
@@ -769,3 +769,20 @@ class TestPeriodLocks:
         assert error.period == "2026-01"
         assert error.action == "新增收入"
         assert error.status == "已结账"
+
+
+def test_employee_leave_date_check():
+    """离职员工必须填写离职日期；缺失时结账检查 WARNING。"""
+    from ledger import employees, store
+
+    _activity("2026-01")
+    report = checks_module.pre_close_checks("2026-01")
+    check = next(item for item in report["checks"] if item["key"] == "employee_leave_date")
+    assert check["status"] == "PASS"
+
+    employee = employees.add_employee({"name": "离职无日期", "hire_date": "2026-01-01"})
+    store.table("employees").update(employee["id"], {"status": "离职", "leave_date": ""})
+    report = checks_module.pre_close_checks("2026-01")
+    check = next(item for item in report["checks"] if item["key"] == "employee_leave_date")
+    assert check["status"] == "WARNING"
+    assert "离职日期" in check["message"]

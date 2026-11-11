@@ -466,6 +466,23 @@ def _render_closing_card() -> None:
     theme.disclaimer()
 
 
+def _render_employee_warnings() -> None:
+    """离开日期缺失提醒（避免“人走了但系统里还是在职/没日期”）。"""
+    try:
+        from ledger import employees as employees_module
+
+        missing = employees_module.employees_without_leave_date()
+    except Exception:  # noqa: BLE001 - 数据不完整时不影响驾驶舱
+        return
+    if missing:
+        names = "、".join(str(item.get("name") or item.get("id")) for item in missing[:5])
+        st.warning(
+            f"有 {len(missing)} 名员工状态为「离职」但未填写离职日期：{names}。"
+            "请在「员工与工资 → 员工管理」补录实际离职日期，否则无法自动扫描离职后误申报。",
+            icon="⚠️",
+        )
+
+
 def render() -> None:
     """渲染首页驾驶舱。"""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -501,6 +518,7 @@ def render() -> None:
     data = _load_dashboard()
     period_label = ledger_api.quarter_label(data.get("period") or current_quarter())
 
+    _render_employee_warnings()
     ui.section("📊 本季度核心指标", f"税款所属期：{period_label}（金额单位：元）")
     ui.metric_row(
         [
