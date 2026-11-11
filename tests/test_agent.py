@@ -1068,3 +1068,16 @@ def test_chat_stream_parses_sse_deltas(monkeypatch):
     client = DeepSeekClient(api_key="sk-test")
     monkeypatch.setattr(client, "_post", lambda payload, stream=False: FakeResponse())
     assert "".join(client.chat_stream([{"role": "user", "content": "hi"}])) == "你好，世界"
+
+
+def test_stream_write_intent_executes_tool_and_skips_cache():
+    from ledger import store
+
+    before = store.table("income").count()
+    text = "今天收到云图科技 20600 元技术服务费，开了普票"
+    events = list(orchestrator.run_turn_stream(text))
+    assert events[0]["source"] == "local"
+    assert store.table("income").count() == before + 1
+    # 第二次同样指令仍应执行（不能命中缓存跳过记账）
+    list(orchestrator.run_turn_stream(text))
+    assert store.table("income").count() == before + 2

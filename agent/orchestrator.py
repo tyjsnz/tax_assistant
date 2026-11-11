@@ -814,7 +814,11 @@ def run_turn(
 LOCAL_FIRST_INTENTS = {
     "calc_vat", "calc_corp_tax", "calc_cit_prepay", "cit_settlement", "calc_rd",
     "calc_stamp_tax", "iit", "payroll_correction", "filing_check", "calendar", "journal",
+    "income", "expense",
 }
+
+#: 写台账指令：必须每次执行，绝不能用旧缓存“回答”，否则会漏记/错记
+WRITE_INTENTS = {"income", "expense"}
 
 
 def run_turn_stream(
@@ -846,9 +850,9 @@ def run_turn_stream(
     tool_name = route.get("tool")
     arguments = dict(route.get("arguments") or {})
 
-    # ① 本地缓存
+    # ① 本地缓存（写台账指令不允许命中缓存，必须真正执行）
     try:
-        cached = qa_store.find_cached(text)
+        cached = None if intent in WRITE_INTENTS else qa_store.find_cached(text)
     except Exception:  # noqa: BLE001 - 问答缓存不可用时不影响回答
         cached = None
     if cached:
