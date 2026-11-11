@@ -1045,6 +1045,12 @@ def _render_audit_tab() -> None:
 # =============================================================================
 def _render_about_tab() -> None:
     ui.section("ℹ️ 关于税小智")
+    try:
+        from ui.components import branding
+
+        branding.about_block()
+    except Exception:  # noqa: BLE001
+        pass
     st.markdown(
         f"""
         **{config.APP_NAME}** · 版本 `{config.APP_VERSION}`

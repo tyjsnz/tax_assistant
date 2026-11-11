@@ -140,6 +140,12 @@ def _render_sidebar() -> str:
             quarter_text = f"{config.today().year} 年"
         st.caption(f"📅 当前季度：{quarter_text}")
         st.caption(f"版本 v{config.APP_VERSION} · 数据仅存本地")
+        try:
+            from ui.components import branding
+
+            branding.sidebar_badge()
+        except Exception:  # noqa: BLE001 - 标识失败不影响导航
+            pass
     return current or nav.PAGE_DASHBOARD
 
 
@@ -202,6 +208,12 @@ def main() -> None:
             pass
     page = _render_sidebar()
     _render_page(page)
+    try:
+        from ui.components import branding
+
+        branding.footer()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 main()
