@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.13.0-informational)
+![Version](https://img.shields.io/badge/version-1.14.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -107,8 +107,9 @@
 | 📚 政策知识库 | 10+ 篇政策文档（文号/生效日期/来源/留存资料），中文检索，DeepSeek 基于检索结果作答并引用来源 | 本地 Markdown + BM25 检索（无向量库依赖） |
 | 🗓️ 申报日历 | 季度/月度申报截止日（周末顺延）、倒计时、提醒窗口、季度完成清单 | 确定性日期计算 |
 | 🗓️ 结账与归档 | 月结/季结状态机（结账锁定写入、生成损益结转凭证、快照哈希）、申报包归档（Excel+PDF+SHA-256 清单）、数据备份/恢复演练 | 期间锁 + 确定性结转 + reportlab 中文 PDF |
-| 🤖 AI 助手 | 「税小智」对话助手，工具调用（算税/记账/查台账/生成申报表/查政策/核对申报），无 Key 自动降级为确定性问答；**全局侧边抽屉：任意页面右侧滑出对话，渐进式输出，不离开当前页** | DeepSeek Function Calling（deepseek-chat / deepseek-reasoner） |
+| 🤖 AI 助手 | 「税小智」对话助手，工具调用（算税/记账/查台账/生成申报表/查政策/核对申报）；**本地优先**（算税/台账/日历等命中本地直接回答，不调 API）+ **SSE 流式** + **问答缓存/👍👎反馈**；无 Key 自动离线；全局侧边抽屉任意页面可用 | DeepSeek Function Calling + SSE（deepseek-chat / deepseek-reasoner） |
 | 📊 驾驶舱 | 本季度收入/税费/申报倒计时/收入趋势/提醒；**离职与申诉异常提醒卡片**（离职后仍申报、缺离职日期、待处理申诉） | Streamlit + Plotly |
+| 🗂️ AI 问答历史 | 每次提问/回答/来源/工具调用/反馈记录在当前公司账套；相同问题命中缓存可免 API 调用 | 本地 CSV，按公司隔离 |
 | 🔐 数据安全 | 数据仅存本地、API Key 本地保存（600 权限）、客户名可脱敏、审计日志 | 无云数据库、无第三方上传 |
 
 ---
@@ -643,4 +644,4 @@ data/
 
 ---
 
-*版本 1.13.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.14.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

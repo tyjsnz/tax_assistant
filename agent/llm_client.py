@@ -468,6 +468,60 @@ class DeepSeekClient:
             "warnings": warnings,
         }
 
+    def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> Iterator[str]:
+        """流式对话补全：逐段 yield 文本增量（DeepSeek SSE / OpenAI 兼容格式）。
+
+        说明：本方法只处理 ``delta.content``；工具调用请使用非流式 :meth:`chat`，
+        由 Agent 编排层在工具执行完后对最终回答调用本方法。
+        """
+        payload = self._payload(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        payload["stream"] = True
+        response = self._post(payload, stream=True)
+        try:
+            for raw_line in response.iter_lines(decode_unicode=True):
+                if not raw_line:
+                    continue
+                line = raw_line.decode("utf-8", "replace") if isinstance(raw_line, bytes) else str(raw_line)
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:") :].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    event = json.loads(data)
+                except ValueError:
+                    continue
+                error = event.get("error") if isinstance(event, dict) else None
+                if isinstance(error, dict):
+                    raise DeepSeekError(
+                        "DeepSeek 流式返回错误：" + str(error.get("message") or "")[:200],
+                        kind="api",
+                    )
+                choices = event.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta") or {}
+                content = delta.get("content")
+                if content:
+                    yield str(content)
+        finally:
+            try:
+                response.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
     def stream_chat(
         self,
         messages: list[dict[str, Any]],

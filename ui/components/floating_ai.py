@@ -74,26 +74,12 @@ def _history() -> list[dict[str, str]]:
     return list(history) if isinstance(history, list) else []
 
 
-def _append(role: str, content: str) -> None:
+def _append(role: str, content: str, **extra: str) -> None:
     history = _history()
-    history.append({"role": role, "content": str(content)})
+    item: dict[str, str] = {"role": role, "content": str(content)}
+    item.update({key: str(value) for key, value in extra.items() if value})
+    history.append(item)
     st.session_state[HISTORY_KEY] = history[-MAX_HISTORY:]
-
-
-def _ask(text: str) -> str:
-    from agent import orchestrator
-
-    history = [
-        {"role": item.get("role") or "user", "content": item.get("content") or ""}
-        for item in _history()[-10:]
-        if item.get("content")
-    ]
-    try:
-        result = orchestrator.run_turn(text, history=history)
-        reply = str(result.get("reply") or "").strip()
-        return reply or "暂时没有生成回复，请稍后再试。"
-    except Exception as exc:  # noqa: BLE001
-        return f"AI 助手暂时不可用：{exc}"
 
 
 def _stream_chunks(text: str) -> Iterator[str]:
@@ -107,6 +93,76 @@ def _stream_chunks(text: str) -> Iterator[str]:
         chunk = content[index : index + step]
         yield chunk
         time.sleep(0.012)
+
+
+def _render_feedback(qa_id: str) -> None:
+    """点赞/踩：用于决定本地缓存是否继续复用，并作为知识库候选。"""
+    try:
+        from ledger import qa as qa_store
+
+        record = qa_store.find_by_id(qa_id) or {}
+        current = str(record.get("feedback") or "")
+    except Exception:  # noqa: BLE001
+        current = ""
+    cols = st.columns([1, 1, 6])
+    with cols[0]:
+        if st.button("👍", key=f"qa_like_{qa_id}", help="有帮助，继续复用该回答"):
+            from ledger import qa as qa_store
+
+            qa_store.set_feedback(qa_id, "赞")
+            st.rerun()
+    with cols[1]:
+        if st.button("👎", key=f"qa_dislike_{qa_id}", help="没帮助，下次不再复用"):
+            from ledger import qa as qa_store
+
+            qa_store.set_feedback(qa_id, "踩")
+            st.rerun()
+    with cols[2]:
+        if current:
+            st.caption(f"已反馈：{'👍 有帮助' if current == '赞' else '👎 没帮助'}")
+
+
+def _stream_answer(text: str, history: list[dict[str, str]]) -> None:
+    """调用本地优先的流式 Agent，并渲染来源标签、流式文本与反馈。"""
+    from agent import orchestrator
+
+    generator = orchestrator.run_turn_stream(text, history=history)
+    try:
+        meta = next(generator)
+    except StopIteration:
+        meta = {}
+    source = str(meta.get("source") or "local")
+    qa_id = str(meta.get("qa_id") or "")
+    badge = {"local": "📗 本地计算/知识库", "cache": "♻️ 本地缓存", "llm": "🤖 AI 流式回答"}.get(
+        source, "💬 回答"
+    )
+    with st.chat_message("assistant"):
+        st.caption(f"{badge} · 仅供参考，以主管税务机关核定为准")
+        reply = ""
+        if source in ("local", "cache"):
+            # 本地/缓存：一次性拿到答案后逐字展示，避免等待感
+            events = list(generator)
+            done = next((event for event in reversed(events) if event.get("type") == "done"), {})
+            reply = str(done.get("reply") or "")
+            qa_id = str(done.get("qa_id") or qa_id)
+            st.write_stream(_stream_chunks(reply))
+        else:
+            placeholder = st.empty()
+            buffer: list[str] = []
+            finish: dict[str, object] = {}
+            try:
+                for event in generator:
+                    if event.get("type") == "text":
+                        buffer.append(str(event.get("text") or ""))
+                        placeholder.markdown("".join(buffer) + "▌")
+                    elif event.get("type") == "done":
+                        finish = event
+            except Exception as exc:  # noqa: BLE001
+                st.warning(f"流式回答中断：{exc}")
+            reply = str(finish.get("reply") or "".join(buffer))
+            qa_id = str(finish.get("qa_id") or qa_id)
+            placeholder.markdown(reply or "暂时没有生成回复。")
+    _append("assistant", reply, qa_id=qa_id, source=source)
 
 
 def _drawer() -> None:
@@ -142,6 +198,14 @@ def _drawer() -> None:
             role = "user" if str(message.get("role") or "assistant") == "user" else "assistant"
             with st.chat_message(role):
                 st.markdown(str(message.get("content") or ""))
+                qa_id = str(message.get("qa_id") or "")
+                if role == "assistant" and qa_id:
+                    source = str(message.get("source") or "")
+                    badge = {"local": "📗 本地计算", "cache": "♻️ 本地缓存", "llm": "🤖 AI 流式"}.get(
+                        source, "💬 回答"
+                    )
+                    st.caption(f"{badge} · 仅供参考")
+                    _render_feedback(qa_id)
 
         with st.form("floating_ai_form", clear_on_submit=True):
             prompt = st.text_input(
@@ -151,15 +215,11 @@ def _drawer() -> None:
             submitted = st.form_submit_button("发送", type="primary", width="stretch")
         if submitted and str(prompt or "").strip():
             text = str(prompt).strip()
+            previous_history = _history()[-10:]
             _append("user", text)
             with st.chat_message("user"):
                 st.markdown(text)
-            with st.chat_message("assistant"):
-                with st.spinner("智小税思考中…"):
-                    reply = _ask(text)
-                streamed = st.write_stream(_stream_chunks(reply))
-            _append("assistant", str(streamed or reply))
-            # 提交后重跑：让消息回归"历史在上、输入在下"的正常对话顺序（抽屉保持打开）
+            _stream_answer(text, previous_history)
             st.rerun()
         st.caption(config.DISCLAIMER)
 

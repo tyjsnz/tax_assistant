@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Iterator, Any
 
 import config
 import engine
@@ -808,6 +808,133 @@ def run_turn(
         fallback["used_llm"] = False
         fallback["error"] = f"AI 助手异常：{exc}（已切换本地规则模式回答）"
         return fallback
+
+
+#: 本地优先的只读/测算意图：有本地确定性答案时直接返回，不调用 DeepSeek
+LOCAL_FIRST_INTENTS = {
+    "calc_vat", "calc_corp_tax", "calc_cit_prepay", "cit_settlement", "calc_rd",
+    "calc_stamp_tax", "iit", "payroll_correction", "filing_check", "calendar", "journal",
+}
+
+
+def run_turn_stream(
+    user_text: str,
+    history: list[dict[str, Any]] | None = None,
+    *,
+    api_key: str | None = None,
+    model: str | None = None,
+    allow_tools: bool = True,
+) -> Iterator[dict[str, Any]]:
+    """流式执行一轮对话（本地优先 + SSE + 问答缓存）。
+
+    yield 事件：
+    * ``{"type": "meta", "source": "cache|local|llm", "intent": ..., "qa_id": ...}``
+    * ``{"type": "text", "text": "增量文本"}``
+    * ``{"type": "done", "reply": 完整回答, "qa_id": ..., "source": ..., "intent": ..., "tool_calls": [...]}``
+    """
+    text = str(user_text or "").strip()
+    if not text:
+        yield {"type": "meta", "source": "local", "intent": "chat"}
+        yield {"type": "text", "text": "请输入你的问题，例如：「这个季度开了 8 万普票，增值税怎么算？」\n\n" + DISCLAIMER}
+        yield {"type": "done", "reply": "请输入问题", "source": "local", "intent": "chat", "qa_id": "", "tool_calls": []}
+        return
+
+    from ledger import qa as qa_store
+
+    route = intent_router.route(text)
+    intent = str(route.get("intent") or "chat")
+    tool_name = route.get("tool")
+    arguments = dict(route.get("arguments") or {})
+
+    # ① 本地缓存
+    try:
+        cached = qa_store.find_cached(text)
+    except Exception:  # noqa: BLE001 - 问答缓存不可用时不影响回答
+        cached = None
+    if cached:
+        try:
+            qa_store.record_hit(str(cached.get("id")))
+        except Exception:  # noqa: BLE001
+            pass
+        reply = str(cached.get("answer") or "").strip()
+        yield {"type": "meta", "source": "cache", "intent": intent, "qa_id": str(cached.get("id"))}
+        yield {"type": "text", "text": reply}
+        yield {
+            "type": "done", "reply": reply, "source": "cache", "intent": intent,
+            "qa_id": str(cached.get("id")), "tool_calls": [],
+        }
+        return
+
+    tool_calls_record: list[dict[str, Any]] = []
+    # ② 本地优先：确定性工具/规则能答的直接本地回答
+    if tool_name and intent in LOCAL_FIRST_INTENTS:
+        result = tools.call_tool(str(tool_name), arguments)
+        tool_calls_record.append({"name": tool_name, "arguments": arguments, "result": {"ok": result.get("ok")}})
+        if result.get("ok"):
+            reply = _ensure_disclaimer(_compose_local(intent, text, route, result))
+            qa_record = None
+            try:
+                qa_record = qa_store.log_qa(
+                    text, reply, intent=intent, source="local", tool_calls=tool_calls_record
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            qa_id = str((qa_record or {}).get("id") or "")
+            yield {"type": "meta", "source": "local", "intent": intent, "qa_id": qa_id}
+            yield {"type": "text", "text": reply}
+            yield {"type": "done", "reply": reply, "source": "local", "intent": intent, "qa_id": qa_id,
+                   "tool_calls": tool_calls_record}
+            return
+
+    # ③ 无 Key：本地规则回答
+    client: DeepSeekClient = get_client(api_key=api_key, model=model)
+    if not client.configured:
+        fallback = local_reply(text)
+        reply = _ensure_disclaimer(str(fallback.get("reply") or ""))
+        qa_record = None
+        try:
+            qa_record = qa_store.log_qa(
+                text, reply, intent=intent, source="local", tool_calls=fallback.get("tool_calls") or []
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        qa_id = str((qa_record or {}).get("id") or "")
+        yield {"type": "meta", "source": "local", "intent": intent, "qa_id": qa_id}
+        yield {"type": "text", "text": reply}
+        yield {"type": "done", "reply": reply, "source": "local", "intent": intent, "qa_id": qa_id,
+               "tool_calls": fallback.get("tool_calls") or []}
+        return
+
+    # ④ LLM：真实 SSE 流式
+    messages = _build_messages(history, text)
+    yield {"type": "meta", "source": "llm", "intent": intent, "model": client.model}
+    chunks: list[str] = []
+    error_text = ""
+    try:
+        for delta in client.chat_stream(messages):
+            if delta:
+                chunks.append(delta)
+                yield {"type": "text", "text": delta}
+        reply = _ensure_disclaimer("".join(chunks).strip())
+    except Exception as exc:  # noqa: BLE001 - 流式失败降级本地
+        error_text = str(exc)
+        fallback = local_reply(text)
+        reply = _ensure_disclaimer(str(fallback.get("reply") or ""))
+        chunks = [reply]
+        yield {"type": "text", "text": reply}
+    qa_record = None
+    try:
+        qa_record = qa_store.log_qa(
+            text, reply, intent=intent, source="llm", model=client.model,
+            tool_calls=tool_calls_record,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    yield {
+        "type": "done", "reply": reply, "source": "llm" if not error_text else "local",
+        "intent": intent, "qa_id": str((qa_record or {}).get("id") or ""),
+        "tool_calls": tool_calls_record, "error": error_text,
+    }
 
 
 #: 兼容别名（CONTRACTS 4.5）

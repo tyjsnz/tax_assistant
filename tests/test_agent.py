@@ -1035,3 +1035,36 @@ def test_payroll_correction_tool_and_intent():
     assert reply["intent"] == "payroll_correction"
     assert "更正" in reply["reply"]
     assert reply["used_llm"] is False
+
+
+def test_run_turn_stream_local_first_and_cache():
+    """无 Key 时走本地；相同问题第二次命中本地缓存。"""
+    text = "这个季度开了 8 万普票，增值税怎么算？"
+    events = list(orchestrator.run_turn_stream(text))
+    meta = events[0]
+    assert meta["type"] == "meta"
+    assert meta["source"] == "local"
+    done = events[-1]
+    assert done["type"] == "done"
+    assert done["reply"]
+    assert done["qa_id"].startswith("QA")
+
+    cached_events = list(orchestrator.run_turn_stream(text))
+    assert cached_events[0]["source"] == "cache"
+    assert cached_events[0]["qa_id"] == done["qa_id"]
+    assert cached_events[-1]["reply"] == done["reply"]
+
+
+def test_chat_stream_parses_sse_deltas(monkeypatch):
+    class FakeResponse:
+        def iter_lines(self, decode_unicode=True):
+            yield 'data: {"choices":[{"delta":{"content":"你好"}}]}'
+            yield 'data: {"choices":[{"delta":{"content":"，世界"}}]}'
+            yield "data: [DONE]"
+
+        def close(self):
+            return None
+
+    client = DeepSeekClient(api_key="sk-test")
+    monkeypatch.setattr(client, "_post", lambda payload, stream=False: FakeResponse())
+    assert "".join(client.chat_stream([{"role": "user", "content": "hi"}])) == "你好，世界"

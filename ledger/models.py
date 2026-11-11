@@ -569,6 +569,27 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("updated_at", "str", "更新时间"),
         ],
     },
+    # AI 问答历史 / 本地缓存 / 反馈（v1.14）
+    "qa_history": {
+        "file": "qa_history.csv",
+        "prefix": "QA",
+        "label": "AI 问答历史",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("question", "str", "问题"),
+            _col("normalized", "str", "规范化问题"),
+            _col("answer", "str", "回答"),
+            _col("intent", "str", "意图"),
+            _col("source", "str", "来源"),
+            _col("model", "str", "模型"),
+            _col("tool_calls_json", "json", "工具调用"),
+            _col("feedback", "str", "反馈"),
+            _col("hit_count", "int", "命中次数"),
+            _col("policy_version", "str", "政策版本"),
+            _col("created_at", "str", "创建时间"),
+            _col("updated_at", "str", "更新时间"),
+        ],
+    },
     # 会计期间（月结/季结状态机，P0-3）
     "periods": {
         "file": "periods.csv",
