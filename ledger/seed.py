@@ -1,6 +1,6 @@
 """示例数据生成：为演示与联调准备一套真实感的 2026 年 Q1—Q4 台账数据。
 
-企业：禄劝云睿网络科技开发有限公司（小规模纳税人，网络科技行业）
+企业：某科技有限公司（小规模纳税人，网络科技行业）
 数据口径（含税金额）：
 
 ===========  ==============  ==========================================
@@ -33,7 +33,7 @@ from ledger.journal import (
 )
 from ledger.store import table
 
-COMPANY_DEMO_NAME = "禄劝云睿网络科技开发有限公司"
+COMPANY_DEMO_NAME = "某科技有限公司"
 
 #: 与业务无关的辅助表（为判断「台账是否为空」只看业务数据表）
 _BUSINESS_TABLES = ("income", "expense", "rd", "contracts", "journal_entries")
@@ -236,7 +236,7 @@ def clear_all() -> None:
 
 
 def seed_demo_data(reset: bool = False) -> dict[str, int]:
-    """生成 2026 年 Q1—Q4 示例数据（企业：禄劝云睿网络科技开发有限公司）。
+    """生成 2026 年 Q1—Q4 示例数据（企业：某科技有限公司）。
 
     参数
     ----

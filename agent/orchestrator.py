@@ -586,7 +586,7 @@ def _compose_local(intent: str, text: str, route: dict[str, Any], result: dict[s
 
     # chat / 兜底
     return (
-        f"你好，我是「税小智」，{config.COMPANY.get('short_name', '云睿科技')}的税务与记账助手。我可以帮你：\n"
+        f"你好，我是「税小智」，{config.COMPANY.get('short_name', '某科技')}的税务与记账助手。我可以帮你：\n"
         "1. 🧮 算税：增值税、企业所得税、研发加计扣除、印花税（确定性引擎计算）；\n"
         "2. 📒 记账：自然语言记收入 / 费用，自动生成分录；\n"
         "3. 📋 申报：生成申报表草稿、核对申报表（支持截图 OCR）；\n"

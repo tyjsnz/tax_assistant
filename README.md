@@ -14,6 +14,7 @@
 ![Version](https://img.shields.io/badge/version-1.7.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
+⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
 📖 **文档**：[快速开始](docs/QUICKSTART.md) · [使用指南](docs/USER_GUIDE.md) ·
 [部署](docs/DEPLOYMENT.md) · [架构](docs/ARCHITECTURE.md) · [安全](SECURITY.md) ·
 [路线图](docs/ROADMAP.md) · [常见问题](docs/FAQ.md)
