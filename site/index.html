@@ -155,6 +155,10 @@
   .foot-grid a:hover{color:var(--text)}
   .foot-bottom{border-top:1px solid var(--line);padding-top:20px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;font-size:12px;line-height:1.8}
   .disclaimer{font-size:12px;color:#8b9ab0;background:rgba(255,191,94,.06);border:1px solid rgba(255,191,94,.18);border-radius:12px;padding:12px 16px;margin-top:18px}
+  /* 教程视频 */
+  .tutorial-video{position:relative;border-radius:22px;overflow:hidden;border:1px solid rgba(255,255,255,.14);background:#0d1524;box-shadow:0 30px 90px rgba(0,0,0,.5);margin-bottom:26px}
+  .tutorial-video video{display:block;width:100%;height:auto}
+  .tutorial-video .vcap{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px;font-size:13px;color:var(--muted);border-top:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
   /* 动画 */
   .reveal{transition:opacity .7s ease,transform .7s ease}
   html.js .reveal{opacity:0;transform:translateY(18px)}
@@ -347,6 +351,16 @@
         <span class="tag">离职纠错 · 新手也能照着做</span>
         <h2>离职员工被多申报？<span class="grad-text">3 步自己处理</span></h2>
         <p>员工离职后忘记停工资、离职后还在申报个税，员工在个税 APP 投诉又撤销——系统帮你扫描、算清差额、生成操作单，照着在扣缴端点就行。</p>
+      </div>
+      <div class="tutorial-video reveal">
+        <video controls preload="metadata" poster="assets/video/p1e-tutorial-poster.jpg">
+          <source src="assets/video/zhixiaoshui-p1e-tutorial.mp4" type="video/mp4" />
+          <track kind="subtitles" src="assets/video/zhixiaoshui-p1e-tutorial.vtt" srclang="zh" label="中文字幕" default />
+        </video>
+        <div class="vcap">
+          <span>🎬 2 分钟视频教程：离职员工多申报，3 步自己处理（含中文字幕与配音）</span>
+          <span><a href="download/离职多申报更正操作单_示例.pdf" download style="color:var(--mint)">⬇ 下载示例操作单 PDF</a> · <a href="https://github.com/tyjsnz/tax_assistant/blob/main/docs/GUIDE_扣缴端离职更正.md" target="_blank" rel="noopener" style="color:var(--mint)">📖 操作指南</a></span>
+        </div>
       </div>
       <div class="ai-grid">
         <div class="reveal">
