@@ -466,6 +466,81 @@ def _render_closing_card() -> None:
     theme.disclaimer()
 
 
+def _render_onboarding_banner() -> None:
+    """首次使用引导入口：未完成新手引导时在首页提示。"""
+    try:
+        from onboarding import state as onboarding
+        from ui.components import company_api
+
+        company_id = company_api.active_company_id()
+        if onboarding.is_complete(company_id):
+            return
+        done = onboarding.completed_count(company_id)
+    except Exception:  # noqa: BLE001 - 引导不可用不影响驾驶舱
+        return
+    with st.container(border=True):
+        cols = st.columns([5, 2])
+        with cols[0]:
+            st.markdown("#### 🚀 第一次使用？先完成 5 步新手引导")
+            st.caption(
+                f"已完成 {done}/5 步：公司信息 → 税务基础 → 第一笔账 → 第一次申报 → 完成。"
+                "引导会帮你确认税务登记/税种认定/三方协议，避免一上来就报错。"
+            )
+        with cols[1]:
+            if st.button("开始/继续引导 →", key="dashboard_onboarding", type="primary", width="stretch"):
+                nav.goto(nav.PAGE_ONBOARDING)
+
+
+def _render_zero_and_late_card(data: dict) -> None:
+    """零申报提醒 + 滞纳金试算（只提示风险，不制造恐慌）。"""
+    with st.container(border=True):
+        st.markdown("#### 🗓️ 零申报与逾期风险")
+        income = float(data.get("quarter_income_exclusive") or 0)
+        if income <= 0:
+            st.warning(
+                "本季度暂无收入记录：如果确实没有业务，也要按期做零申报（增值税及附加、"
+                "个税无员工也要零申报），不能“没收入就不管”。",
+                icon="⚠️",
+            )
+        else:
+            st.caption(f"本季度不含税收入 {F.fmt_money(income)} 元；有收入也要按期申报，免税不等于免申报。")
+        cols = st.columns([2, 2, 2])
+        with cols[0]:
+            if st.button("📖 看「首次报税全流程」", key="dash_goto_first_filing", width="stretch"):
+                st.session_state["guide_workflow"] = "🆕 首次报税全流程"
+                nav.goto(nav.PAGE_GUIDE)
+        with cols[1]:
+            if st.button("🗓️ 查看申报日历", key="dash_goto_calendar", width="stretch"):
+                nav.goto(nav.PAGE_FILING)
+        with cols[2]:
+            st.caption("零申报也要提交并确认“申报成功”。")
+        with st.expander("🧮 滞纳金试算（仅供参考）", expanded=False):
+            from datetime import date as _date
+
+            late_cols = st.columns(3)
+            with late_cols[0]:
+                amount = st.number_input("滞纳税款（元）", min_value=0.0, value=0.0, step=100.0, key="late_fee_amount")
+            with late_cols[1]:
+                due = st.date_input("缴款期限", value=_date.today(), key="late_fee_due")
+            with late_cols[2]:
+                paid = st.date_input("实际/预计缴款日", value=_date.today(), key="late_fee_paid")
+            if st.button("计算滞纳金", key="late_fee_calc", width="stretch"):
+                try:
+                    from engine.late_fee import calc_late_fee
+
+                    result = calc_late_fee(amount, due, paid)
+                    if result["days"] <= 0:
+                        st.success("按所选日期，未产生滞纳金。")
+                    else:
+                        st.error(
+                            f"逾期 {result['days']} 天，滞纳金约 {F.fmt_money(result['late_fee'])} 元，"
+                            f"合计应缴约 {F.fmt_money(result['total'])} 元。{result['disclaimer']}"
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"计算失败：{exc}")
+            st.caption("滞纳金 = 滞纳税款 × 0.05% × 滞纳天数；实际以主管税务机关核定为准，不替代专业意见。")
+
+
 def _render_hr_anomaly_card() -> None:
     """首页「离职与申诉异常」提醒卡片：汇总离职多申报、缺离职日期、待处理申诉。"""
     try:
@@ -550,6 +625,7 @@ def render() -> None:
     data = _load_dashboard()
     period_label = ledger_api.quarter_label(data.get("period") or current_quarter())
 
+    _render_onboarding_banner()
     _render_hr_anomaly_card()
     ui.section("📊 本季度核心指标", f"税款所属期：{period_label}（金额单位：元）")
     ui.metric_row(
@@ -578,6 +654,7 @@ def render() -> None:
             _deadline_metric(data),
         ]
     )
+    _render_zero_and_late_card(data)
     st.caption(
         f"本年累计：不含税收入 {F.fmt_money(data.get('ytd_income'))} · "
         f"费用 {F.fmt_money(data.get('ytd_expense'))} · "

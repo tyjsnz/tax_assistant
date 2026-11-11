@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.17.0-informational)
+![Version](https://img.shields.io/badge/version-1.18.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -40,6 +40,7 @@
 
 ## 界面预览
 
+| 🚀 新手引导 | 5 步从零配置：公司信息 → 税务基础 → 第一笔账 → 第一次申报 → 完成；含 AI 无需 Key 提示 | 引导页 + 本地进度文件 |
 | 🏠 首页驾驶舱 | 🧮 算税工作台 |
 |---|---|
 | ![首页驾驶舱](docs/screenshots/01_dashboard.png) | ![算税工作台](docs/screenshots/03_calculator.png) |
@@ -108,8 +109,8 @@
 | 🗓️ 申报日历 | 季度/月度申报截止日（周末顺延）、倒计时、提醒窗口、季度完成清单 | 确定性日期计算 |
 | 🗓️ 结账与归档 | 月结/季结状态机（结账锁定写入、生成损益结转凭证、快照哈希）、申报包归档（Excel+PDF+SHA-256 清单）、数据备份/恢复演练 | 期间锁 + 确定性结转 + reportlab 中文 PDF |
 | 🤖 AI 助手 | 「税小智」对话助手，工具调用（算税/记账/查台账/生成申报表/查政策/核对申报）；**本地优先**（算税/台账/日历等命中本地直接回答，不调 API）+ **SSE 流式** + **问答缓存/👍👎反馈/已审核知识库**；无 Key 自动离线；全局侧边抽屉任意页面可用 | DeepSeek Function Calling + SSE（deepseek-chat / deepseek-reasoner） |
-| 📊 驾驶舱 | 本季度收入/税费/申报倒计时/收入趋势/提醒；**离职与申诉异常提醒卡片**（离职后仍申报、缺离职日期、待处理申诉） | Streamlit + Plotly |
-| 📖 图文操作指引 | 增值税申报、个税扣缴、所得税预缴、汇算清缴、离职更正 5 个高频流程：菜单路径、字段说明、常见错误、官方入口、完成进度、PDF 操作单；**自绘示意图，不使用电子税务局截图** | 本地内容 + reportlab PDF，无版权/隐私风险 |
+| 📊 驾驶舱 | 本季度收入/税费/申报倒计时/收入趋势/提醒；**离职与申诉异常提醒卡片**；**零申报提醒 + 滞纳金试算** | Streamlit + Plotly + 确定性滞纳金计算 |
+| 📖 图文操作指引 | 增值税申报、个税扣缴、所得税预缴、汇算清缴、首次报税、离职更正 6 个高频流程：菜单路径、字段说明、常见错误、官方入口、完成进度、PDF 操作单；**自绘示意图，不使用电子税务局截图** | 本地内容 + reportlab PDF，无版权/隐私风险 |
 | 🗂️ AI 问答历史 | 每次提问/回答/来源/工具调用/反馈记录在当前公司账套；相同问题命中缓存可免 API 调用 | 本地 CSV，按公司隔离 |
 | 🗂️ 已审核问答知识库 | 从历史问答沉淀「候选 → 审核发布」；BM25/bigram 检索，高置信直接回答，中置信注入 LLM 上下文；政策版本变化自动失效 | 本地 CSV + 规则检索，不依赖向量库 |
 | 🔐 数据安全 | 数据仅存本地、API Key 本地保存（600 权限）、客户名可脱敏、审计日志 | 无云数据库、无第三方上传 |
@@ -355,7 +356,7 @@ tax/
 ├── docs/                      # 文档集（索引见 docs/README.md）
 │   ├── README.md              # 文档索引
 │   ├── QUICKSTART.md          # 5 分钟上手
-│   ├── USER_GUIDE.md          # 13 个页面使用指南
+│   ├── USER_GUIDE.md          # 14 个页面使用指南
 │   ├── DEPLOYMENT.md          # 部署/多公司/备份/升级
 │   ├── ARCHITECTURE.md        # 架构与扩展指南
 │   ├── FAQ.md                 # 常见问题
@@ -596,7 +597,7 @@ data/
 
 覆盖范围：算税引擎（免税/专票/超限/边界/四舍五入）、台账 CRUD 与汇总、分录借贷平衡、
 申报表栏次勾稽、导出 Excel、申报进度、意图识别、知识库检索、OCR 字段映射、
-**票据/流水解析与匹配入账（54 项）**、**月结/季结与期间锁、归档/备份恢复**、**个税累计预扣与工资表**、**企业所得税汇算辅助**、**离职多申报纠错**、Streamlit 冒烟（13 页 AppTest）、端到端集成测试。
+**票据/流水解析与匹配入账（54 项）**、**月结/季结与期间锁、归档/备份恢复**、**个税累计预扣与工资表**、**企业所得税汇算辅助**、**离职多申报纠错**、Streamlit 冒烟（14 页 AppTest）、端到端集成测试。
 
 测试自动把数据目录指向临时目录（`tests/conftest.py`），不污染本地台账。
 
@@ -646,4 +647,4 @@ data/
 
 ---
 
-*版本 1.17.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.18.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

@@ -19,6 +19,7 @@ APP_PATH = str(Path(__file__).resolve().parents[1] / "ui" / "streamlit_app.py")
 
 PAGES = [
     "🏠 首页驾驶舱",
+    "🚀 新手引导",
     "📒 台账管理",
     "👥 员工与工资",
     "🧯 离职与纠错",
@@ -52,7 +53,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 13 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 14 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     radio = at.radio(key="nav")
@@ -615,6 +616,15 @@ def test_guides_page_has_three_workflows_and_pdf_button() -> None:
     at.radio(key="nav").set_value("📖 操作指引").run()
     _assert_clean(at, "操作指引")
     options = list(at.radio(key="guide_workflow").options)
-    assert len(options) == 5
+    assert len(options) == 6
     body = "\n".join(str(element.value) for element in at.markdown)
     assert "增值税及附加税费申报" in body or "增值税及附加税费申报（小规模纳税人" in body
+
+
+def test_onboarding_page_renders() -> None:
+    """新手引导：5 步进度与第一步公司信息正常渲染。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("🚀 新手引导").run()
+    _assert_clean(at, "新手引导")
+    captions = "\n".join(str(element.value) for element in at.caption)
+    assert "第 1 / 5 步" in captions and "公司信息" in captions

@@ -12,6 +12,7 @@ from typing import Iterator
 import streamlit as st
 
 PAGE_DASHBOARD = "🏠 首页驾驶舱"
+PAGE_ONBOARDING = "🚀 新手引导"
 PAGE_LEDGER = "📒 台账管理"
 PAGE_PAYROLL = "👥 员工与工资"
 PAGE_CORRECTION = "🧯 离职与纠错"
@@ -28,6 +29,7 @@ PAGE_SETTINGS = "⚙️ 设置"
 #: 侧边栏顺序（标签, 视图模块）
 PAGES: list[tuple[str, str]] = [
     (PAGE_DASHBOARD, "ui.views.dashboard"),
+    (PAGE_ONBOARDING, "ui.views.onboarding"),
     (PAGE_LEDGER, "ui.views.ledger"),
     (PAGE_PAYROLL, "ui.views.payroll"),
     (PAGE_CORRECTION, "ui.views.correction"),
