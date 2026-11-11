@@ -44,7 +44,8 @@ def _render_pipeline() -> None:
                 st.success("季度流水线执行完成，请逐步复核结果。" if result.get("ok") else "流水线执行完成，但有步骤失败，请查看明细。")
                 for item in result.get("steps") or []:
                     if item.get("ok"):
-                        st.caption(f"✅ {item.get('key')} {item.get('month') or ''}")
+                        note = f"（{item.get('note')}）" if item.get("skipped") else ""
+                        st.caption(f"✅ {item.get('key')} {item.get('month') or ''}{note}")
                     else:
                         st.warning(f"❌ {item.get('key')} {item.get('month') or ''}：{item.get('error')}")
                 st.caption(f"执行前备份：{result.get('backup', {}).get('name') or '已创建'}")

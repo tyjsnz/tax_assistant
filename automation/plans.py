@@ -30,6 +30,12 @@ def preview_payroll(period: str) -> dict[str, Any]:
     month = payroll.normalize_month(period)
     active = employees.active_employees_for_month(month)
     existing = payroll.list_payroll(month)
+    try:
+        from closing.close import is_closed
+
+        closed = bool(is_closed(month))
+    except Exception:  # noqa: BLE001
+        closed = False
     existing_ids = {str(row.get("employee_id")) for row in existing}
     pending = [row for row in active if str(row.get("id")) not in existing_ids]
     return {
@@ -40,7 +46,9 @@ def preview_payroll(period: str) -> dict[str, Any]:
         "existing_count": len(existing),
         "pending_count": len(pending),
         "pending_names": [str(row.get("name") or row.get("id")) for row in pending[:10]],
-        "warnings": [] if active else ["当前没有在职员工，无法生成工资表。"],
+        "closed": closed,
+        "warnings": (["该期间已结账：流水线会跳过工资生成，避免改动已锁定数据。"] if closed else [])
+        + ([] if active else ["当前没有在职员工，无法生成工资表。"]),
     }
 
 
@@ -259,6 +267,15 @@ def execute_pipeline(
 
     if include_payroll:
         for month in quarter_months(period):
+            try:
+                from closing.close import is_closed
+
+                if is_closed(month):
+                    steps.append({"key": "payroll", "month": month, "ok": True, "skipped": True,
+                                  "note": "已结账，跳过工资生成"})
+                    continue
+            except Exception:  # noqa: BLE001
+                pass
             try:
                 steps.append({"key": "payroll", "month": month, "ok": True, "result": _run_payroll(month)})
             except Exception as exc:  # noqa: BLE001
