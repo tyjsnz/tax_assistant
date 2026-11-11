@@ -14,7 +14,7 @@ import pandas as pd
 import streamlit as st
 
 import config
-from ui.components import cache, formatting as F, payroll_api as PA, runtime, theme, ui
+from ui.components import cache, formatting as F, nav, payroll_api as PA, runtime, theme, ui
 
 FLASH_KEY = "_payroll_flash"
 STATE_IIT_BUNDLE = "payroll_iit_bundle"
@@ -489,6 +489,12 @@ def _render_employee_tab() -> None:
     )
     if not PA.employees_ready():
         ui.module_missing("员工档案", "ledger.employees", detail=PA.missing_detail())
+    if st.button(
+        "🧯 离职与纠错（离职后多申报 / 个税异议申诉处理）",
+        key="goto_correction_page",
+        width="content",
+    ):
+        nav.goto(nav.PAGE_CORRECTION)
     summary = PA.summarize_employees()
     ui.metric_row(
         [
@@ -1082,8 +1088,8 @@ def _render_iit_return_tab() -> None:
 # =============================================================================
 # 离职与纠错（P1-E）
 # =============================================================================
-def _render_correction_tab() -> None:
-    """离职后多申报扫描、更正方案与个税异议申诉台账。"""
+def _render_correction_scan_section() -> None:
+    """离职后多申报扫描、手动更正、方案与进度清单（申诉台账/补偿金在独立标签页）。"""
     st.caption(
         "员工离职后仍做工资/申报个税时：先停申报，再逐月更正；员工个税 APP 撤销申诉不等于数据已更正。"
         "本页只做扫描、测算与操作单，实际更正请在自然人电子税务局（扣缴端）完成。"
@@ -1385,55 +1391,58 @@ def _render_correction_tab() -> None:
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"重置失败：{exc}")
 
-        # 离职补偿金分项测算
-        with st.expander("💰 离职补偿金分项测算（经济补偿金参考 + 一次性补偿个税）", expanded=False):
-            st.caption(
-                "经济补偿金按《劳动合同法》第四十七条测算；一次性补偿收入在当地上年职工平均工资 3 倍以内免征个税，"
-                "超过部分单独按综合所得税率表计税（财税〔2018〕164号第五条），不并入当年综合所得。"
+
+def _render_severance_section() -> None:
+    """离职补偿金分项测算（独立标签页）。"""
+    st.caption(
+        "经济补偿金按《劳动合同法》第四十七条测算；一次性补偿收入在当地上年职工平均工资 3 倍以内免征个税，"
+        "超过部分单独按综合所得税率表计税（财税〔2018〕164号第五条），不并入当年综合所得。"
+    )
+    cols = st.columns(3)
+    with cols[0]:
+        monthly_wage = st.number_input("离职前月工资（元）", min_value=0.0, value=10_000.0, step=500.0, key="sev_wage")
+        years = st.number_input("工作年限（整年）", min_value=0, value=2, step=1, key="sev_years")
+    with cols[1]:
+        months = st.number_input("零头月数（0–11）", min_value=0, max_value=11, value=3, step=1, key="sev_months")
+        local_avg = st.number_input("当地上年职工月平均工资（元）", min_value=0.0, value=7_000.0, step=500.0, key="sev_avg")
+    with cols[2]:
+        override_amount = st.number_input(
+            "实际补偿金额（元，0=按法定参考）", min_value=0.0, value=0.0, step=1_000.0, key="sev_amount"
+        )
+    if st.button("🧮 测算补偿金与个税", key="sev_calc", width="stretch"):
+        try:
+            from engine import calc_severance
+
+            st.session_state["severance_result"] = calc_severance(
+                monthly_wage,
+                years,
+                months=months,
+                local_average_wage=local_avg,
+                amount=override_amount or None,
             )
-            cols = st.columns(3)
-            with cols[0]:
-                monthly_wage = st.number_input("离职前月工资（元）", min_value=0.0, value=10_000.0, step=500.0, key="sev_wage")
-                years = st.number_input("工作年限（整年）", min_value=0, value=2, step=1, key="sev_years")
-            with cols[1]:
-                months = st.number_input("零头月数（0–11）", min_value=0, max_value=11, value=3, step=1, key="sev_months")
-                local_avg = st.number_input("当地上年职工月平均工资（元）", min_value=0.0, value=7_000.0, step=500.0, key="sev_avg")
-            with cols[2]:
-                override_amount = st.number_input(
-                    "实际补偿金额（元，0=按法定参考）", min_value=0.0, value=0.0, step=1_000.0, key="sev_amount"
-                )
-            if st.button("🧮 测算补偿金与个税", key="sev_calc", width="stretch"):
-                try:
-                    from engine import calc_severance
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"测算失败：{exc}")
+    sev = st.session_state.get("severance_result")
+    if sev:
+        pay, tax = sev.get("pay") or {}, sev.get("tax") or {}
+        ui.metric_row(
+            [
+                {"label": "经济补偿金参考", "value": F.fmt_money(pay.get("amount"))},
+                {"label": "免税额度（3 倍社平）", "value": F.fmt_money(tax.get("exemption_limit"))},
+                {"label": "应税金额", "value": F.fmt_money(tax.get("taxable_amount"))},
+                {"label": "一次性补偿个税", "value": F.fmt_money(tax.get("tax"))},
+                {"label": "税后到手", "value": F.fmt_money(sev.get("net_amount"))},
+            ],
+            columns=5,
+        )
+        st.info(sev.get("note") or "")
+        for warning in sev.get("warnings") or []:
+            st.warning(warning)
+        st.caption("提示：该测算不含当月正常工资、社保公积金与离职补偿的税前扣除处理；以当地口径为准。")
 
-                    st.session_state["severance_result"] = calc_severance(
-                        monthly_wage,
-                        years,
-                        months=months,
-                        local_average_wage=local_avg,
-                        amount=override_amount or None,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"测算失败：{exc}")
-            sev = st.session_state.get("severance_result")
-            if sev:
-                pay, tax = sev.get("pay") or {}, sev.get("tax") or {}
-                ui.metric_row(
-                    [
-                        {"label": "经济补偿金参考", "value": F.fmt_money(pay.get("amount"))},
-                        {"label": "免税额度（3 倍社平）", "value": F.fmt_money(tax.get("exemption_limit"))},
-                        {"label": "应税金额", "value": F.fmt_money(tax.get("taxable_amount"))},
-                        {"label": "一次性补偿个税", "value": F.fmt_money(tax.get("tax"))},
-                        {"label": "税后到手", "value": F.fmt_money(sev.get("net_amount"))},
-                    ],
-                    columns=5,
-                )
-                st.info(sev.get("note") or "")
-                for warning in sev.get("warnings") or []:
-                    st.warning(warning)
-                st.caption("提示：该测算不含当月正常工资、社保公积金与离职补偿的税前扣除处理；以当地口径为准。")
 
-    st.divider()
+def _render_disputes_section() -> None:
+    """个税异议申诉台账（独立标签页）。"""
     ui.section("个税异议申诉台账", "记录员工在个税 APP 的申诉、撤销、沟通与更正闭环")
     try:
         disputes = corrections.list_disputes()
@@ -1520,6 +1529,7 @@ def _render_correction_tab() -> None:
                     st.error(f"登记失败：{exc}")
     st.caption("提示：员工撤销路径——个人所得税 APP → 服务 → 收入纳税明细查询 → 异议申诉记录 → 撤销申诉。撤销后请保存截图。")
 
+
 # =============================================================================
 # 页面入口
 # =============================================================================
@@ -1534,12 +1544,10 @@ def render() -> None:
     _show_flash()
     if not PA.any_ready():
         ui.module_missing("员工与工资", "ledger.employees / ledger.payroll / filing.iit_return", detail=PA.missing_detail())
-    tabs = st.tabs(["👥 员工管理", "💰 月度工资表", "📋 扣缴申报辅助表", "🧯 离职与纠错"])
+    tabs = st.tabs(["👥 员工管理", "💰 月度工资表", "📋 扣缴申报辅助表"])
     with tabs[0]:
         _render_employee_tab()
     with tabs[1]:
         _render_payroll_tab()
     with tabs[2]:
         _render_iit_return_tab()
-    with tabs[3]:
-        _render_correction_tab()

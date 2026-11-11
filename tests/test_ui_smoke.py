@@ -21,6 +21,7 @@ PAGES = [
     "🏠 首页驾驶舱",
     "📒 台账管理",
     "👥 员工与工资",
+    "🧯 离职与纠错",
     "📥 票据与流水",
     "🧮 算税工作台",
     "📋 申报填报",
@@ -50,7 +51,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 11 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 12 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     radio = at.radio(key="nav")
@@ -578,3 +579,17 @@ def test_settlement_annual_return_and_export() -> None:
         export[0].click().run()
         _assert_clean(at, "汇算清缴（导出 Excel 后）")
         assert at.download_button, "导出后应出现下载按钮"
+
+
+def test_correction_page_renders_empty() -> None:
+    """离职与纠错：空数据下三个子标签正常渲染。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("🧯 离职与纠错").run()
+    _assert_clean(at, "离职与纠错（空数据）")
+
+    tab_labels = [tab.label for tab in at.tabs]
+    assert any("扫描与更正" in label for label in tab_labels)
+    assert any("离职补偿金" in label for label in tab_labels)
+    assert any("异议申诉台账" in label for label in tab_labels)
+    html_text = "\n".join(element.value for element in at.html)
+    assert "仅供参考" in html_text
