@@ -20,10 +20,10 @@ def _render_pipeline() -> None:
     period = st.text_input("季度（YYYYQn）", value=plans.quarter_period(), key="auto_pipeline_period")
     if st.button("🔍 预览整条流水线", key="auto_pipeline_preview", width="stretch"):
         try:
-            st.session_state["auto_pipeline_preview"] = plans.preview_pipeline(period)
+            st.session_state["_auto_pipeline_result"] = plans.preview_pipeline(period)
         except Exception as exc:  # noqa: BLE001
             st.error(f"预览失败：{exc}")
-    preview = st.session_state.get("auto_pipeline_preview") or {}
+    preview = st.session_state.get("_auto_pipeline_result") or {}
     if preview:
         st.dataframe(
             [{"步骤": item.get("title"), "预览": item.get("summary")} for item in preview.get("steps") or []],
@@ -61,10 +61,10 @@ def _render_payroll() -> None:
     with cols[0]:
         if st.button("🔍 预览", key="auto_payroll_preview", width="stretch"):
             try:
-                st.session_state["auto_payroll_preview"] = plans.preview_payroll(period)
+                st.session_state["_auto_payroll_result"] = plans.preview_payroll(period)
             except Exception as exc:  # noqa: BLE001
                 st.error(f"预览失败：{exc}")
-    preview = st.session_state.get("auto_payroll_preview") or {}
+    preview = st.session_state.get("_auto_payroll_result") or {}
     if preview:
         with cols[1]:
             st.metric("在职员工", f"{preview.get('active_count', 0)} 人")
@@ -79,7 +79,7 @@ def _render_payroll() -> None:
             try:
                 result = plans.execute_payroll(period)
                 st.success(f"已生成工资表：{result['period']}；备份：{result['backup'].get('name') or result['backup'].get('path') or '已创建'}")
-                st.session_state["auto_payroll_preview"] = None
+                st.session_state["_auto_payroll_result"] = None
             except Exception as exc:  # noqa: BLE001
                 st.error(f"执行失败：{exc}")
 
@@ -88,10 +88,10 @@ def _render_ingest() -> None:
     st.caption("先导入发票/流水，再生成匹配建议；勾选确认后，系统会把 ≥80 分的匹配自动入账（低于阈值保留人工确认）。")
     if st.button("🔍 预览待匹配情况", key="auto_ingest_preview", width="stretch"):
         try:
-            st.session_state["auto_ingest_preview"] = plans.preview_ingest()
+            st.session_state["_auto_ingest_result"] = plans.preview_ingest()
         except Exception as exc:  # noqa: BLE001
             st.error(f"预览失败：{exc}")
-    preview = st.session_state.get("auto_ingest_preview") or {}
+    preview = st.session_state.get("_auto_ingest_result") or {}
     summary = preview.get("summary") or {}
     if summary:
         cols = st.columns(4)
@@ -125,10 +125,10 @@ def _render_filing() -> None:
     period = st.text_input("季度（YYYYQn）", value=plans.quarter_period(), key="auto_filing_period")
     if st.button("🔍 预览申报表与税额", key="auto_filing_preview", width="stretch"):
         try:
-            st.session_state["auto_filing_preview"] = plans.preview_filing(period)
+            st.session_state["_auto_filing_result"] = plans.preview_filing(period)
         except Exception as exc:  # noqa: BLE001
             st.error(f"预览失败：{exc}")
-    preview = st.session_state.get("auto_filing_preview") or {}
+    preview = st.session_state.get("_auto_filing_result") or {}
     if preview:
         cols = st.columns(2)
         with cols[0]:
@@ -155,10 +155,10 @@ def _render_correction() -> None:
     st.caption("扫描离职后仍申报的员工，为每位生成《更正操作单》PDF；不会自动修改扣缴端申报。")
     if st.button("🔍 预览异常员工", key="auto_correction_preview", width="stretch"):
         try:
-            st.session_state["auto_correction_preview"] = plans.preview_correction()
+            st.session_state["_auto_correction_result"] = plans.preview_correction()
         except Exception as exc:  # noqa: BLE001
             st.error(f"预览失败：{exc}")
-    preview = st.session_state.get("auto_correction_preview") or {}
+    preview = st.session_state.get("_auto_correction_result") or {}
     summary = preview.get("summary") or {}
     if preview:
         cols = st.columns(3)

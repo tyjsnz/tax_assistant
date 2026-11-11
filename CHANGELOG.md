@@ -3,6 +3,14 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循语义化版本 `MAJOR.MINOR.PATCH`。
 
+## [v1.24.2] - 2026-11-12
+
+### 修复
+- AI 代办页「预览」按钮与结果 session_state 同名冲突，导致
+  `cannot be modified after the widget ... instantiated` 及页面渲染失败；
+  结果改用独立 `_auto_*_result` 键，预览/执行恢复。
+- 全量 822 项测试通过；官网/下载包/在线演示更新 v1.24.2。
+
 ## [v1.24.1] - 2026-11-12
 
 ### 修复
