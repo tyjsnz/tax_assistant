@@ -15,6 +15,7 @@ ACTION_LABELS = {
     "ingest": "票据匹配并自动入账",
     "filing": "生成并归档季度申报包",
     "correction": "扫描离职异常并导出更正操作单",
+    "pipeline": "一键季度流水线（票据→工资→异常→申报包）",
 }
 
 _STRONG_ACTIONS = (
@@ -27,6 +28,7 @@ _PREVIEWS: dict[str, Callable[..., dict[str, Any]]] = {
     "ingest": plans.preview_ingest,
     "filing": plans.preview_filing,
     "correction": plans.preview_correction,
+    "pipeline": plans.preview_pipeline,
 }
 
 
@@ -39,12 +41,16 @@ def detect(text: str) -> dict[str, Any] | None:
     if not any(word in value for word in _STRONG_ACTIONS):
         return None
     # 纯概念/流程问答不触发执行
-    if any(word in value for word in ("怎么", "如何", "为什么", "是什么", "吗？", "吗?", "流程", "步骤")):
+    if any(word in value for word in ("怎么", "如何", "为什么", "是什么", "吗？", "吗?")):
         # 但“帮我准备/帮我做/一键”仍视为明确动作
         if not any(word in value for word in ("帮我", "一键", "代办", "执行")):
             return None
     action = ""
-    if ("工资" in value or "个税" in value) and any(word in value for word in ("生成", "做", "准备", "帮我", "计算")):
+    if ("流水线" in value or "全流程" in value) or (
+        "一键" in value and "季度" in value and ("申报" in value or "代办" in value)
+    ):
+        action = "pipeline"
+    elif ("工资" in value or "个税" in value) and any(word in value for word in ("生成", "做", "准备", "帮我", "计算")):
         action = "payroll"
     elif ("票据" in value or "发票" in value or "流水" in value) and any(
         word in value for word in ("匹配", "入账", "自动", "帮我", "处理")
@@ -63,7 +69,7 @@ def detect(text: str) -> dict[str, Any] | None:
     params: dict[str, Any] = {}
     if action == "payroll":
         params["period"] = plans.month_period()
-    elif action == "filing":
+    elif action in ("filing", "pipeline"):
         params["period"] = plans.quarter_period()
     return {
         "action": action,
@@ -75,6 +81,8 @@ def detect(text: str) -> dict[str, Any] | None:
 
 def preview(intent: dict[str, Any]) -> dict[str, Any]:
     action = str(intent.get("action") or "")
+    if action == "pipeline":
+        return plans.preview_pipeline((intent.get("params") or {}).get("period"))
     func = _PREVIEWS.get(action)
     if func is None:
         raise ValueError(f"不支持的代办动作：{action}")
@@ -91,6 +99,8 @@ def execute(intent: dict[str, Any]) -> dict[str, Any]:
         return plans.execute_filing(**intent.get("params", {}))
     if action == "correction":
         return plans.execute_correction(**intent.get("params", {}))
+    if action == "pipeline":
+        return plans.execute_pipeline((intent.get("params") or {}).get("period"))
     raise ValueError(f"不支持的代办动作：{action}")
 
 
@@ -114,6 +124,13 @@ def result_text(action: str, result: dict[str, Any]) -> str:
         return (
             f"✅ 已扫描离职异常并为 {len(result.get('exported') or [])} 位员工生成更正操作单，"
             "执行前已备份；请到「🧯 离职与纠错」复核并到扣缴端更正。"
+        )
+    if action == "pipeline":
+        steps = result.get("steps") or []
+        ok = sum(1 for item in steps if item.get("ok"))
+        return (
+            f"✅ 季度流水线执行完成：{ok}/{len(steps)} 步成功，执行前已备份。"
+            "请到「👥 员工与工资」「📥 票据与流水」「📋 申报填报」逐步复核；申报仍需在电子税务局手工提交。"
         )
     return "✅ 代办执行完成。"
 

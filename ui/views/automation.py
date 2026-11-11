@@ -12,6 +12,47 @@ from automation import plans
 from ui.components import nav, theme, ui
 
 
+def _render_pipeline() -> None:
+    st.caption(
+        "按顺序执行：票据匹配入账 → 生成该季度各月工资表 → 扫描离职异常 → 生成并归档申报包；"
+        "只备份一次，执行后逐步复核。**不会自动提交电子税务局/缴款。**"
+    )
+    period = st.text_input("季度（YYYYQn）", value=plans.quarter_period(), key="auto_pipeline_period")
+    if st.button("🔍 预览整条流水线", key="auto_pipeline_preview", width="stretch"):
+        try:
+            st.session_state["auto_pipeline_preview"] = plans.preview_pipeline(period)
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"预览失败：{exc}")
+    preview = st.session_state.get("auto_pipeline_preview") or {}
+    if preview:
+        st.dataframe(
+            [{"步骤": item.get("title"), "预览": item.get("summary")} for item in preview.get("steps") or []],
+            width="stretch", hide_index=True,
+        )
+        filing = preview.get("filing") or {}
+        cols = st.columns(2)
+        with cols[0]:
+            st.metric("申报表", f"{filing.get('form_count', 0)} 张")
+        with cols[1]:
+            st.metric("合计税费", f"¥{filing.get('total_tax', 0):,.2f}")
+        for warning in preview.get("warnings") or []:
+            st.warning(warning)
+        confirmed = st.checkbox("我已核对预览，确认执行整条流水线", key="auto_pipeline_confirm")
+        if st.button("🚀 执行季度流水线", key="auto_pipeline_execute", type="primary", disabled=not confirmed):
+            try:
+                result = plans.execute_pipeline(period)
+                st.success("季度流水线执行完成，请逐步复核结果。" if result.get("ok") else "流水线执行完成，但有步骤失败，请查看明细。")
+                for item in result.get("steps") or []:
+                    if item.get("ok"):
+                        st.caption(f"✅ {item.get('key')} {item.get('month') or ''}")
+                    else:
+                        st.warning(f"❌ {item.get('key')} {item.get('month') or ''}：{item.get('error')}")
+                st.caption(f"执行前备份：{result.get('backup', {}).get('name') or '已创建'}")
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"执行失败：{exc}")
+    st.caption("建议先预览再执行；失败步骤可在对应页面手工处理，不会自动重试。")
+
+
 def _render_payroll() -> None:
     st.caption("按在职员工生成当月工资表草稿（累计预扣、社保公积金按档案）；生成后可在「👥 员工与工资」修改。")
     period = st.text_input("工资月份（YYYY-MM）", value=plans.month_period(), key="auto_payroll_period")
@@ -155,14 +196,16 @@ def render() -> None:
         "**不可以自动：登录电子税务局、提交申报、缴款、开专票、社保申报**——这些没有公开 API，也涉及合规责任。",
         icon="🔐",
     )
-    tabs = st.tabs(["👥 工资个税", "🧾 票据入账", "📋 季度申报", "🧯 离职纠错"])
+    tabs = st.tabs(["🚀 一键季度流水线", "👥 工资个税", "🧾 票据入账", "📋 季度申报", "🧯 离职纠错"])
     with tabs[0]:
-        _render_payroll()
+        _render_pipeline()
     with tabs[1]:
-        _render_ingest()
+        _render_payroll()
     with tabs[2]:
-        _render_filing()
+        _render_ingest()
     with tabs[3]:
+        _render_filing()
+    with tabs[4]:
         _render_correction()
     st.caption("每次写操作前自动创建本地备份；执行结果请到对应页面复核。所有金额与操作仍以主管税务机关口径为准。")
     theme.disclaimer()

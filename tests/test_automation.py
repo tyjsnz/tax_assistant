@@ -33,3 +33,11 @@ def test_preview_ingest_and_correction():
     assert "summary" in ingest
     correction = plans.preview_correction()
     assert "summary" in correction
+
+
+def test_pipeline_preview():
+    result = plans.preview_pipeline("2026Q4")
+    assert result["action"] == "pipeline"
+    assert result["months"] == ["2026-10", "2026-11", "2026-12"]
+    assert len(result["steps"]) == 4
+    assert result["filing"]["form_count"] >= 1

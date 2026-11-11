@@ -249,6 +249,20 @@ def _render_automation_pending() -> None:
                 st.metric("涉及月份", f"{summary.get('months', 0)} 个")
             with cols[2]:
                 st.metric("涉及工资", f"¥{summary.get('income', 0):,.2f}")
+        elif action == "pipeline":
+            filing = preview.get("filing") or {}
+            payrolls = preview.get("payrolls") or []
+            ingest = preview.get("ingest") or {}
+            correction = preview.get("correction") or {}
+            cols = st.columns(4)
+            with cols[0]:
+                st.metric("申报表", f"{filing.get('form_count', 0)} 张")
+            with cols[1]:
+                st.metric("工资待生成", f"{sum(item.get('pending_count', 0) for item in payrolls)} 人")
+            with cols[2]:
+                st.metric("待匹配发票", f"{(ingest.get('summary') or {}).get('invoices_pending', 0)} 张")
+            with cols[3]:
+                st.metric("离职异常", f"{(correction.get('summary') or {}).get('employees', 0)} 人")
         for warning in preview.get("warnings") or []:
             st.warning(warning)
         st.caption("执行前自动备份；不会登录电子税务局、不会自动提交申报/缴款。")

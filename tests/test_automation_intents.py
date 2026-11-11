@@ -33,3 +33,14 @@ def test_preview_for_intent():
     intent = {"action": "payroll", "params": {"period": "2026-11"}}
     preview = intents.preview(intent)
     assert preview["action"] == "payroll"
+
+
+def test_detect_pipeline():
+    assert intents.detect("帮我跑一键季度流水线")["action"] == "pipeline"
+    assert intents.detect("从票据到申报全流程处理一下")["action"] == "pipeline"
+
+
+def test_pipeline_preview():
+    preview = intents.preview({"action": "pipeline", "params": {"period": "2026Q4"}})
+    assert preview["action"] == "pipeline"
+    assert len(preview["steps"]) == 4

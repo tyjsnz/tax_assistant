@@ -44,14 +44,21 @@ def preview_payroll(period: str) -> dict[str, Any]:
     }
 
 
-def execute_payroll(period: str, *, operator: str = "AI 代办") -> dict[str, Any]:
-    from archiving.backup import create_backup
+def _run_payroll(period: str) -> dict[str, Any]:
     from ledger import payroll
 
     month = payroll.normalize_month(period)
+    return {"result": payroll.build_payroll(month), "period": month}
+
+
+def execute_payroll(period: str, *, operator: str = "AI 代办") -> dict[str, Any]:
+    from archiving.backup import create_backup
+
+    month = month_period() if not period else period
     backup = create_backup("before_auto_payroll", note=f"AI 代办生成工资表 {month}", operator=operator)
-    result = payroll.build_payroll(month)
-    return {"backup": backup, "result": result, "period": month}
+    result = _run_payroll(month)
+    result["backup"] = backup
+    return result
 
 
 def preview_filing(period: str) -> dict[str, Any]:
@@ -83,14 +90,21 @@ def preview_filing(period: str) -> dict[str, Any]:
     }
 
 
-def execute_filing(period: str, *, operator: str = "AI 代办") -> dict[str, Any]:
-    from archiving.backup import create_backup
+def _run_filing(period: str, *, operator: str = "AI 代办") -> dict[str, Any]:
     from archiving.filing_archive import archive_filing_package
 
     quarter = str(period or quarter_period())
+    return {"result": archive_filing_package(quarter, note="AI 代办生成申报包", operator=operator), "period": quarter}
+
+
+def execute_filing(period: str, *, operator: str = "AI 代办") -> dict[str, Any]:
+    from archiving.backup import create_backup
+
+    quarter = str(period or quarter_period())
     backup = create_backup("before_auto_filing", note=f"AI 代办生成申报包 {quarter}", operator=operator)
-    result = archive_filing_package(quarter, note="AI 代办生成申报包", operator=operator)
-    return {"backup": backup, "result": result, "period": quarter}
+    result = _run_filing(quarter, operator=operator)
+    result["backup"] = backup
+    return result
 
 
 def preview_ingest() -> dict[str, Any]:
@@ -104,12 +118,9 @@ def preview_ingest() -> dict[str, Any]:
     }
 
 
-def execute_ingest(*, min_score: float = 80.0, operator: str = "AI 代办") -> dict[str, Any]:
-    """生成匹配建议并确认高置信匹配入账（≥80 分），返回处理明细。"""
-    from archiving.backup import create_backup
+def _run_ingest(*, min_score: float = 80.0) -> dict[str, Any]:
     from ingest import matcher
 
-    backup = create_backup("before_auto_ingest", note="AI 代办票据匹配入账", operator=operator)
     suggestion = matcher.suggest_matches(min_score=min_score)
     confirmed = []
     skipped = []
@@ -122,13 +133,17 @@ def execute_ingest(*, min_score: float = 80.0, operator: str = "AI 代办") -> d
                 skipped.append(str(row.get("id")))
         except Exception as exc:  # noqa: BLE001 - 单条失败不阻塞其他
             skipped.append(f"{row.get('id')}: {exc}")
-    return {
-        "backup": backup,
-        "suggestion": suggestion,
-        "confirmed": confirmed,
-        "skipped": skipped,
-        "confirmed_count": len(confirmed),
-    }
+    return {"suggestion": suggestion, "confirmed": confirmed, "skipped": skipped, "confirmed_count": len(confirmed)}
+
+
+def execute_ingest(*, min_score: float = 80.0, operator: str = "AI 代办") -> dict[str, Any]:
+    """生成匹配建议并确认高置信匹配入账（≥80 分），返回处理明细。"""
+    from archiving.backup import create_backup
+
+    backup = create_backup("before_auto_ingest", note="AI 代办票据匹配入账", operator=operator)
+    result = _run_ingest(min_score=min_score)
+    result["backup"] = backup
+    return result
 
 
 def preview_correction() -> dict[str, Any]:
@@ -144,12 +159,9 @@ def preview_correction() -> dict[str, Any]:
     }
 
 
-def execute_correction(*, operator: str = "AI 代办") -> dict[str, Any]:
-    """扫描并为每位异常员工导出《更正操作单》PDF（不代替扣缴端更正申报）。"""
-    from archiving.backup import create_backup
+def _run_correction() -> dict[str, Any]:
     from ledger import corrections
 
-    backup = create_backup("before_auto_correction", note="AI 代办离职更正操作单", operator=operator)
     scan = corrections.scan_departed_overpayments()
     exported = []
     for item in scan.get("items") or []:
@@ -162,7 +174,109 @@ def execute_correction(*, operator: str = "AI 代办") -> dict[str, Any]:
             exported.append({"employee": item.get("employee_name"), "path": str(path)})
         except Exception as exc:  # noqa: BLE001
             exported.append({"employee": item.get("employee_name"), "error": str(exc)})
-    return {"backup": backup, "exported": exported, "summary": scan.get("summary") or {}}
+    return {"exported": exported, "summary": scan.get("summary") or {}}
+
+
+def execute_correction(*, operator: str = "AI 代办") -> dict[str, Any]:
+    """扫描并为每位异常员工导出《更正操作单》PDF（不代替扣缴端更正申报）。"""
+    from archiving.backup import create_backup
+
+    backup = create_backup("before_auto_correction", note="AI 代办离职更正操作单", operator=operator)
+    result = _run_correction()
+    result["backup"] = backup
+    return result
+
+
+def quarter_months(quarter: str) -> list[str]:
+    """把 2026Q4 转成 ['2026-10','2026-11','2026-12']。"""
+    text = str(quarter or "").strip().upper()
+    try:
+        year_text, q_text = text.split("Q")
+        year = int(year_text)
+        q = int(q_text)
+    except (ValueError, AttributeError):
+        now = config.today()
+        year = now.year
+        q = (now.month - 1) // 3 + 1
+    start = (q - 1) * 3 + 1
+    return [f"{year}-{month:02d}" for month in range(start, start + 3)]
+
+
+def preview_pipeline(quarter: str | None = None) -> dict[str, Any]:
+    """一键季度流水线预览：票据 → 工资 → 离职异常 → 申报包。"""
+    period = str(quarter or quarter_period())
+    months = quarter_months(period)
+    ingest = preview_ingest()
+    payrolls = [preview_payroll(month) for month in months]
+    correction = preview_correction()
+    filing = preview_filing(period)
+    steps = [
+        {"key": "ingest", "title": "票据匹配入账", "summary": f"待匹配发票 {ingest['summary'].get('invoices_pending', 0)} 张"},
+        {"key": "payroll", "title": "生成工资表", "summary": f"待生成 {sum(item.get('pending_count', 0) for item in payrolls)} 人"},
+        {"key": "correction", "title": "扫描离职异常", "summary": f"异常员工 {correction['summary'].get('employees', 0)} 人"},
+        {"key": "filing", "title": "生成并归档申报包", "summary": f"{filing.get('form_count', 0)} 张表 / ¥{filing.get('total_tax', 0):,.2f}"},
+    ]
+    warnings = []
+    warnings.extend(ingest.get("warnings") or [])
+    for item in payrolls:
+        warnings.extend(item.get("warnings") or [])
+    warnings.extend(filing.get("warnings") or [])
+    return {
+        "action": "pipeline",
+        "period": period,
+        "months": months,
+        "ingest": ingest,
+        "payrolls": payrolls,
+        "correction": correction,
+        "filing": filing,
+        "steps": steps,
+        "warnings": warnings,
+    }
+
+
+def execute_pipeline(
+    quarter: str | None = None,
+    *,
+    min_score: float = 80.0,
+    include_ingest: bool = True,
+    include_payroll: bool = True,
+    include_correction: bool = True,
+    include_filing: bool = True,
+    operator: str = "AI 代办",
+) -> dict[str, Any]:
+    """按顺序执行季度流水线：票据 → 工资 → 离职异常 → 申报包；只备份一次。"""
+    from archiving.backup import create_backup
+
+    period = str(quarter or quarter_period())
+    backup = create_backup("before_auto_pipeline", note=f"AI 代办季度流水线 {period}", operator=operator)
+    steps: list[dict[str, Any]] = []
+
+    if include_ingest:
+        try:
+            steps.append({"key": "ingest", "ok": True, "result": _run_ingest(min_score=min_score)})
+        except Exception as exc:  # noqa: BLE001
+            steps.append({"key": "ingest", "ok": False, "error": str(exc)})
+
+    if include_payroll:
+        for month in quarter_months(period):
+            try:
+                steps.append({"key": "payroll", "month": month, "ok": True, "result": _run_payroll(month)})
+            except Exception as exc:  # noqa: BLE001
+                steps.append({"key": "payroll", "month": month, "ok": False, "error": str(exc)})
+
+    if include_correction:
+        try:
+            steps.append({"key": "correction", "ok": True, "result": _run_correction()})
+        except Exception as exc:  # noqa: BLE001
+            steps.append({"key": "correction", "ok": False, "error": str(exc)})
+
+    if include_filing:
+        try:
+            steps.append({"key": "filing", "ok": True, "result": _run_filing(period, operator=operator)})
+        except Exception as exc:  # noqa: BLE001
+            steps.append({"key": "filing", "ok": False, "error": str(exc)})
+
+    return {"period": period, "backup": backup, "steps": steps, "ok": all(item.get("ok") for item in steps)}
 
 
 __all__ = [
@@ -171,4 +285,5 @@ __all__ = [
     "preview_filing", "execute_filing",
     "preview_ingest", "execute_ingest",
     "preview_correction", "execute_correction",
+    "preview_pipeline", "execute_pipeline", "quarter_months",
 ]
