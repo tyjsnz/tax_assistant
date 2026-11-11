@@ -1,49 +1,69 @@
-"""全局浮动 AI 助手：任何页面右下角常驻按钮，点击弹出对话框，不离开当前页面。
+"""全局侧边抽屉式 AI 助手：任何页面右侧滑出，不打断当前页面操作。
 
 设计：
-* 悬浮按钮通过 ``st.container(key="floating_ai")`` 的 ``st-key-floating_ai`` class 固定定位；
-* 点击后打开 ``st.dialog``，内部复用 ``agent.orchestrator.run_turn``（无 Key 时自动离线回复）；
-* 对话历史独立保存，不影响「🤖 AI 助手」页面的会话；
-* 任何异常都不影响当前页面。
+* 右下角常驻 🤖 悬浮按钮；点击后右侧滑出抽屉（非模态，页面仍可操作）；
+* 抽屉内是聊天界面：历史记录、输入框、发送、清空、跳转完整 AI 页面；
+* 回复采用**渐进式输出**（逐段渲染），先给用户"正在生成"的连续反馈；
+* 无 DeepSeek Key 时自动使用离线确定性回答，任何异常都不影响当前页面。
 """
 
 from __future__ import annotations
+
+import time
+from typing import Iterator
 
 import streamlit as st
 
 import config
 
 HISTORY_KEY = "floating_ai_history"
+OPEN_KEY = "_floating_ai_drawer_open"
 MAX_HISTORY = 20
 
 _CSS = """
 <style>
+  /* 右下角悬浮按钮 */
   div.st-key-floating_ai {
     position: fixed !important;
     right: 24px !important;
     bottom: 26px !important;
-    z-index: 99999 !important;
+    z-index: 100000 !important;
     width: auto !important;
   }
   div.st-key-floating_ai button {
-    width: 58px !important;
-    height: 58px !important;
-    min-height: 58px !important;
-    padding: 0 !important;
-    border-radius: 50% !important;
-    font-size: 24px !important;
+    width: 58px !important; height: 58px !important; min-height: 58px !important;
+    padding: 0 !important; border-radius: 50% !important; font-size: 24px !important;
     background: linear-gradient(135deg, #37e6b0 0%, #5b9dff 100%) !important;
-    color: #06131c !important;
-    border: none !important;
+    color: #06131c !important; border: none !important;
     box-shadow: 0 12px 32px rgba(55, 230, 176, 0.45), 0 4px 14px rgba(0, 0, 0, 0.3) !important;
   }
-  div.st-key-floating_ai button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 16px 40px rgba(55, 230, 176, 0.6) !important;
+  div.st-key-floating_ai button:hover { transform: translateY(-2px); }
+
+  /* 右侧抽屉 */
+  div.st-key-floating_ai_drawer {
+    position: fixed !important;
+    top: 0 !important; right: 0 !important; bottom: 0 !important;
+    width: min(430px, 94vw) !important;
+    z-index: 1000000 !important;
+    background: #0b1220 !important;
+    border-left: 1px solid rgba(55, 230, 176, 0.25) !important;
+    box-shadow: -18px 0 60px rgba(0, 0, 0, 0.55) !important;
+    padding: 66px 16px 12px !important;
+    overflow-y: auto !important;
+    color: #e8eef8 !important;
   }
+  div.st-key-floating_ai_drawer h3 { margin: 0 0 4px !important; font-size: 18px; color: #e8eef8 !important; }
+  div.st-key-floating_ai_drawer [data-testid="stMarkdownContainer"] p,
+  div.st-key-floating_ai_drawer [data-testid="stMarkdownContainer"] li,
+  div.st-key-floating_ai_drawer [data-testid="stMarkdownContainer"] strong { color: #e8eef8 !important; }
+  div.st-key-floating_ai_drawer input { color: #e8eef8 !important; }
+  div.st-key-floating_ai_drawer [data-testid="stChatMessage"] { background: rgba(255, 255, 255, 0.06) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; }
+  div.st-key-floating_ai_drawer .ai-drawer-sub { color: #9aa8bd; font-size: 12px; margin-bottom: 10px; }
+  div.st-key-floating_ai_drawer [data-testid="stChatMessage"] { background: rgba(255,255,255,.03); border-radius: 12px; }
   @media (max-width: 620px) {
     div.st-key-floating_ai { right: 14px !important; bottom: 16px !important; }
     div.st-key-floating_ai button { width: 52px !important; height: 52px !important; min-height: 52px !important; }
+    div.st-key-floating_ai_drawer { width: 100vw !important; }
   }
 </style>
 """
@@ -71,60 +91,86 @@ def _ask(text: str) -> str:
     try:
         result = orchestrator.run_turn(text, history=history)
         reply = str(result.get("reply") or "").strip()
-        if not reply:
-            reply = "暂时没有生成回复，请稍后再试。"
-        return reply
-    except Exception as exc:  # noqa: BLE001 - 对话框内失败不影响页面
+        return reply or "暂时没有生成回复，请稍后再试。"
+    except Exception as exc:  # noqa: BLE001
         return f"AI 助手暂时不可用：{exc}"
 
 
-@st.dialog("🤖 智小税 AI 助手 · 随时问", width="large")
-def _dialog() -> None:
-    st.caption(
-        "无需离开当前页面：可以问算税、记账、工资个税、离职纠错、申报日历或政策。"
-        "未配置 DeepSeek Key 时自动使用离线确定性回答。"
-    )
-    history = _history()
-    if not history:
-        st.info("试试：「这个季度开了 8 万普票，增值税怎么算？」「员工离职后还在申报个税怎么办？」")
-    for message in history:
-        role = str(message.get("role") or "assistant")
-        with st.chat_message("user" if role == "user" else "assistant"):
-            st.markdown(str(message.get("content") or ""))
+def _stream_chunks(text: str) -> Iterator[str]:
+    """渐进式展示：按 2–4 字/段输出，兼顾速度与"正在生成"的连续感。"""
+    content = str(text or "")
+    if not content:
+        yield "（无内容）"
+        return
+    step = 3
+    for index in range(0, len(content), step):
+        chunk = content[index : index + step]
+        yield chunk
+        time.sleep(0.012)
 
-    prompt = st.chat_input("问智小税…", key="floating_ai_prompt")
-    if prompt:
-        _append("user", prompt)
-        with st.spinner("智小税思考中…"):
-            reply = _ask(prompt)
-        _append("assistant", reply)
-        # 对话框内 st.chat_input 提交会触发整页 rerun，这里标记“自动重新打开”，
-        # 由主页面 render() 在 rerun 后重新弹出对话框，用户视觉上不会离开对话。
-        st.session_state["_floating_ai_reopen"] = True
-        st.rerun()
 
-    cols = st.columns([1, 1, 2])
-    with cols[0]:
-        if st.button("🧹 清空对话", key="floating_ai_clear", width="stretch"):
-            st.session_state[HISTORY_KEY] = []
-            st.session_state["_floating_ai_reopen"] = True
+def _drawer() -> None:
+    with st.container(key="floating_ai_drawer"):
+        head_cols = st.columns([8, 1])
+        with head_cols[0]:
+            st.markdown("### 🤖 智小税 AI 助手")
+            st.markdown(
+                '<div class="ai-drawer-sub">随时提问，不离开当前页面；无 Key 时自动离线回答。</div>',
+                unsafe_allow_html=True,
+            )
+        with head_cols[1]:
+            if st.button("✕", key="floating_ai_close", help="收起助手"):
+                st.session_state[OPEN_KEY] = False
+                st.rerun()
+
+        history = _history()
+        chat_cols = st.columns([1, 1])
+        with chat_cols[0]:
+            if st.button("🧹 清空", key="floating_ai_clear", width="stretch"):
+                st.session_state[HISTORY_KEY] = []
+                st.rerun()
+        with chat_cols[1]:
+            if st.button("↗ 完整页面", key="floating_ai_full_page", width="stretch"):
+                from ui.components import nav
+
+                st.session_state[OPEN_KEY] = False
+                nav.goto(nav.PAGE_ASSISTANT)
+
+        if not history:
+            st.info("试试：「这个季度开了 8 万普票，增值税怎么算？」「员工离职后还在申报个税怎么办？」")
+        for message in history:
+            role = "user" if str(message.get("role") or "assistant") == "user" else "assistant"
+            with st.chat_message(role):
+                st.markdown(str(message.get("content") or ""))
+
+        with st.form("floating_ai_form", clear_on_submit=True):
+            prompt = st.text_input(
+                "问智小税…", key="floating_ai_prompt", label_visibility="collapsed",
+                placeholder="例如：这个季度开了 8 万普票，增值税怎么算？",
+            )
+            submitted = st.form_submit_button("发送", type="primary", width="stretch")
+        if submitted and str(prompt or "").strip():
+            text = str(prompt).strip()
+            _append("user", text)
+            with st.chat_message("user"):
+                st.markdown(text)
+            with st.chat_message("assistant"):
+                with st.spinner("智小税思考中…"):
+                    reply = _ask(text)
+                streamed = st.write_stream(_stream_chunks(reply))
+            _append("assistant", str(streamed or reply))
+            # 提交后重跑：让消息回归"历史在上、输入在下"的正常对话顺序（抽屉保持打开）
             st.rerun()
-    with cols[1]:
-        if st.button("↗ 完整 AI 页面", key="floating_ai_full_page", width="stretch"):
-            from ui.components import nav
-
-            nav.goto(nav.PAGE_ASSISTANT)
-    with cols[2]:
         st.caption(config.DISCLAIMER)
 
 
 def render() -> None:
-    """在页面右下角渲染常驻 AI 助手按钮（任何页面均可用）。"""
+    """全局渲染：悬浮按钮 + 可展开的侧边抽屉。"""
     st.markdown(_CSS, unsafe_allow_html=True)
+    if st.session_state.get(OPEN_KEY):
+        _drawer()
+        return
     with st.container(key="floating_ai"):
-        clicked = st.button(
-            "🤖", key="floating_ai_open", help="智小税 AI 助手：随时提问，不离开当前页面"
-        )
-    # 对话提交后整页 rerun 会关闭对话框，这里自动重新打开，保持“随时对话”的体验。
-    if clicked or st.session_state.pop("_floating_ai_reopen", False):
-        _dialog()
+        if st.button("🤖", key="floating_ai_open", help="智小税 AI 助手：随时提问，不离开当前页面"):
+            st.session_state[OPEN_KEY] = True
+            st.rerun()
