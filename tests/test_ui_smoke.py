@@ -27,6 +27,7 @@ PAGES = [
     "📋 申报填报",
     "📊 汇算清缴",
     "🔍 申报核对",
+    "📖 操作指引",
     "📚 政策知识库",
     "🤖 AI 助手",
     "⚙️ 设置",
@@ -51,7 +52,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 12 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 13 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     radio = at.radio(key="nav")
@@ -606,3 +607,14 @@ def test_floating_ai_button_on_all_pages() -> None:
     at.radio(key="nav").set_value("📒 台账管理").run()
     _assert_clean(at, "台账管理（浮动 AI）")
     assert any(getattr(button, "key", "") == "floating_ai_open" for button in at.button)
+
+
+def test_guides_page_has_three_workflows_and_pdf_button() -> None:
+    """操作指引：三个流程可选、步骤卡片与 PDF 导出入口存在。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("📖 操作指引").run()
+    _assert_clean(at, "操作指引")
+    options = list(at.radio(key="guide_workflow").options)
+    assert len(options) == 3
+    body = "\n".join(str(element.value) for element in at.markdown)
+    assert "增值税及附加税费申报" in body or "增值税及附加税费申报（小规模纳税人" in body
