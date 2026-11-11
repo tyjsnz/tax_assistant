@@ -50,8 +50,13 @@ _CSS = """
     box-shadow: -18px 0 60px rgba(0, 0, 0, 0.55) !important;
     padding: 66px 16px 12px !important;
     overflow-y: auto !important;
+    overflow-x: hidden !important;
     color: #e8eef8 !important;
+    word-break: break-word !important;
   }
+  div.st-key-floating_ai_drawer [data-testid="stAlert"],
+  div.st-key-floating_ai_drawer [data-testid="stNotification"],
+  div.st-key-floating_ai_drawer [data-testid="stMarkdownContainer"] { max-width: 100% !important; overflow-x: hidden !important; }
   div.st-key-floating_ai_drawer h3 { margin: 0 0 4px !important; font-size: 18px; color: #e8eef8 !important; }
   div.st-key-floating_ai_drawer [data-testid="stMarkdownContainer"] p,
   div.st-key-floating_ai_drawer [data-testid="stMarkdownContainer"] li,
@@ -123,7 +128,7 @@ def _render_feedback(qa_id: str) -> None:
                 from ledger import qa_knowledge
 
                 record = qa_knowledge.promote_from_history(qa_id)
-                st.success(f"已存为候选知识 {record.get('id')}，可到「📚 政策知识库」审核发布。")
+                st.caption(f"📌 已存为候选 {record.get('id')}；可在「政策知识库 → 我的问答知识库」审核发布。")
             except Exception as exc:  # noqa: BLE001
                 st.warning(f"保存失败：{exc}")
     with cols[3]:
