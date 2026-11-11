@@ -954,6 +954,60 @@ def _render_sample_actions() -> None:
                 st.rerun()
 
 
+def _render_handover_section() -> None:
+    """公司账套交接/迁移包：给公司或新代账的可读导出。"""
+    st.markdown("---")
+    ui.section(
+        "📦 公司账套交接 / 迁移包",
+        "与“数据备份”不同：交接包是给公司/新代账的通用数据包，含原始 CSV、可读 Excel、归档文件与清单哈希，不含 API Key。",
+    )
+    st.info(
+        "适用场景：公司更换代账、迁移到其他系统、股东/税务检查需要完整账套、公司注销前留档。"
+        "建议交接双方核对 manifest.json 中的记录数与 SHA-256，并签字确认。",
+        icon="📦",
+    )
+    cols = st.columns(2)
+    with cols[0]:
+        include_archives = st.checkbox("包含申报归档文件（PDF/Excel）", value=True, key="handover_archives")
+    with cols[1]:
+        include_uploads = st.checkbox("包含原始附件（发票/截图，可能较大且含敏感信息）", value=False, key="handover_uploads")
+    if st.button("📦 生成公司交接包", key="handover_build", type="primary", width="stretch"):
+        try:
+            from archiving.handover import build_handover_package
+
+            with st.spinner("正在打包当前公司账套…"):
+                result = build_handover_package(
+                    include_archives=include_archives,
+                    include_uploads=include_uploads,
+                )
+            st.session_state["_handover_result"] = result
+            st.success("交接包已生成。")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"生成失败：{exc}")
+    result = st.session_state.get("_handover_result")
+    if result:
+        path = Path(result["path"])
+        cols = st.columns(3)
+        with cols[0]:
+            st.metric("文件大小", f"{result['size'] / 1024:.1f} KB")
+        with cols[1]:
+            st.metric("数据表", f"{len(result.get('tables') or {})} 张")
+        with cols[2]:
+            st.metric("记录总数", f"{sum((result.get('tables') or {}).values())} 条")
+        st.caption(f"生成路径：{path}")
+        st.caption(f"SHA-256：{result.get('sha256')}")
+        if path.exists():
+            st.download_button(
+                "⬇️ 下载公司交接包",
+                data=path.read_bytes(),
+                file_name=path.name,
+                mime="application/zip",
+                key="handover_download",
+                width="stretch",
+            )
+        st.caption("交接包不含 API Key、全局设置与审计日志；原始附件按需勾选，请妥善保管。")
+
+
 def _render_data_tab() -> None:
     """数据管理：存储统计、备份 / 恢复、归档包、示例数据与清空。"""
     ui.section(
@@ -997,6 +1051,8 @@ def _render_data_tab() -> None:
     st.markdown("---")
     ui.section("🗄️ 归档包", "申报包归档记录与哈希校验。")
     _render_archive_section()
+
+    _render_handover_section()
 
     st.markdown("---")
     ui.section("🧪 示例数据", "演示与回归测试用；重新生成会清空原有台账。")
