@@ -123,12 +123,40 @@ def _render_feedback(qa_id: str) -> None:
             qa_store.set_feedback(qa_id, "踩")
             st.rerun()
     with cols[2]:
-        if st.button("📌 存为知识", key=f"qa_save_{qa_id}", help="转为候选知识，在「政策知识库」审核发布"):
+        # 不用额外的成功提示（会撑高/撑宽抽屉）：直接检查是否已转候选，按钮状态即可反馈
+        saved = False
+        try:
+            from ledger import qa as qa_store_check
+            from ledger import qa_knowledge
+
+            source = qa_store_check.find_by_id(qa_id) or {}
+            normalized = str(source.get("normalized") or "")
+            saved = any(
+                str(item.get("source_qa_id") or "") == qa_id
+                or (normalized and str(item.get("normalized") or "") == normalized)
+                for item in qa_knowledge.list_knowledge(None)
+            )
+        except Exception:  # noqa: BLE001
+            saved = False
+        if saved:
+            st.button(
+                "✅ 已存为候选",
+                key=f"qa_saved_{qa_id}",
+                disabled=True,
+                help="已进入候选知识；可在「📚 政策知识库 → 我的问答知识库」审核发布",
+                width="stretch",
+            )
+        elif st.button(
+            "📌 存为知识",
+            key=f"qa_save_{qa_id}",
+            help="转为候选知识，可在「📚 政策知识库 → 我的问答知识库」审核发布",
+            width="stretch",
+        ):
             try:
                 from ledger import qa_knowledge
 
-                record = qa_knowledge.promote_from_history(qa_id)
-                st.caption(f"📌 已存为候选 {record.get('id')}；可在「政策知识库 → 我的问答知识库」审核发布。")
+                qa_knowledge.promote_from_history(qa_id)
+                st.rerun()
             except Exception as exc:  # noqa: BLE001
                 st.warning(f"保存失败：{exc}")
     with cols[3]:
