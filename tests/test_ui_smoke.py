@@ -78,7 +78,7 @@ def test_calculator_shows_disclaimer_and_results() -> None:
     metric_values = [metric.value for metric in at.metric]
     assert any("¥" in str(value) for value in metric_values), "应展示带 ¥ 的算税指标"
     html_text = "\n".join(element.value for element in at.html)
-    assert "仅供参考" in html_text, "算税结果下方必须展示免责声明"
+    assert "仅供参考" in html_text
 
 
 def test_ledger_page_has_four_tabs_and_editor() -> None:
@@ -593,3 +593,7 @@ def test_correction_page_renders_empty() -> None:
     assert any("异议申诉台账" in label for label in tab_labels)
     html_text = "\n".join(element.value for element in at.html)
     assert "仅供参考" in html_text
+    warnings = "\n".join(str(item.value) for item in at.warning)
+    assert "申诉台账不可用" not in warnings
+    infos = "\n".join(str(item.value) for item in at.info)
+    assert "暂无申诉记录" in infos

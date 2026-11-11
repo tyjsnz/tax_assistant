@@ -1443,6 +1443,8 @@ def _render_severance_section() -> None:
 
 def _render_disputes_section() -> None:
     """个税异议申诉台账（独立标签页）。"""
+    from ledger import corrections, employees as employee_api
+
     ui.section("个税异议申诉台账", "记录员工在个税 APP 的申诉、撤销、沟通与更正闭环")
     try:
         disputes = corrections.list_disputes()

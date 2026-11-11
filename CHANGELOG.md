@@ -3,6 +3,13 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循语义化版本 `MAJOR.MINOR.PATCH`。
 
+## [v1.11.1] - 2026-11-12
+
+### 修复
+- 修复「🧯 离职与纠错」独立页面拆分后，个税异议申诉台账报 `name 'corrections' is not defined` 的问题
+  （拆分时局部依赖未带入新函数）；补充 UI 回归测试，确保申诉台账正常渲染。
+- 全量离线测试 773 项。
+
 ## [v1.11.0] - 2026-11-12
 
 ### 变更
