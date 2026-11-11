@@ -931,6 +931,8 @@ def _render_archive_panel(period: str) -> None:
 # =============================================================================
 def render() -> None:
     """渲染申报填报页。"""
+    from ui.components import explainers
+
     header_period = str(st.session_state.get("filing_period") or current_quarter())
     try:
         archived_hint = "已归档" if AA.has_archive(header_period) else "未归档"
@@ -944,6 +946,7 @@ def render() -> None:
             f"当前季度：{period_label(header_period)} · 结账：{_closure_text(header_period)} · 归档：{archived_hint}"
         ),
     )
+    explainers.basics()
     _show_flash()
 
     modules = _modules()

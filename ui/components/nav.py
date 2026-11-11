@@ -17,6 +17,7 @@ PAGE_LEDGER = "📒 台账管理"
 PAGE_PAYROLL = "👥 员工与工资"
 PAGE_CORRECTION = "🧯 离职与纠错"
 PAGE_INGEST = "📥 票据与流水"
+PAGE_INVOICE = "🧾 发票合规"
 PAGE_CALCULATOR = "🧮 算税工作台"
 PAGE_FILING = "📋 申报填报"
 PAGE_SETTLEMENT = "📊 汇算清缴"
@@ -34,6 +35,7 @@ PAGES: list[tuple[str, str]] = [
     (PAGE_PAYROLL, "ui.views.payroll"),
     (PAGE_CORRECTION, "ui.views.correction"),
     (PAGE_INGEST, "ui.views.ingest"),
+    (PAGE_INVOICE, "ui.views.invoice_check"),
     (PAGE_CALCULATOR, "ui.views.calculator"),
     (PAGE_FILING, "ui.views.filing"),
     (PAGE_SETTLEMENT, "ui.views.settlement"),

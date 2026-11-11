@@ -24,6 +24,7 @@ PAGES = [
     "👥 员工与工资",
     "🧯 离职与纠错",
     "📥 票据与流水",
+    "🧾 发票合规",
     "🧮 算税工作台",
     "📋 申报填报",
     "📊 汇算清缴",
@@ -53,7 +54,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 14 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 15 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     radio = at.radio(key="nav")
@@ -615,8 +616,8 @@ def test_guides_page_has_three_workflows_and_pdf_button() -> None:
     at = _new_app()
     at.radio(key="nav").set_value("📖 操作指引").run()
     _assert_clean(at, "操作指引")
-    options = list(at.radio(key="guide_workflow").options)
-    assert len(options) == 6
+    options = list(at.selectbox(key="guide_workflow").options)
+    assert len(options) == 8
     body = "\n".join(str(element.value) for element in at.markdown)
     assert "增值税及附加税费申报" in body or "增值税及附加税费申报（小规模纳税人" in body
 
@@ -628,3 +629,12 @@ def test_onboarding_page_renders() -> None:
     _assert_clean(at, "新手引导")
     captions = "\n".join(str(element.value) for element in at.caption)
     assert "第 1 / 5 步" in captions and "公司信息" in captions
+
+
+def test_invoice_check_page_renders() -> None:
+    """发票合规判断页：选项、判断按钮正常渲染。"""
+    at = _new_app()
+    at.radio(key="nav").set_value("🧾 发票合规").run()
+    _assert_clean(at, "发票合规")
+    assert at.selectbox(key="invoice_type").value
+    assert at.button(key="invoice_assess")

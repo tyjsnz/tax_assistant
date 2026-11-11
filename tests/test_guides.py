@@ -8,10 +8,11 @@ from guidebooks import content
 from guidebooks.pdf import build_guide_pdf
 
 
-def test_six_workflows_content():
+def test_eight_workflows_content():
     workflows = content.list_workflows()
     assert [item["id"] for item in workflows] == [
-        "vat", "iit", "cit_prepay", "settlement", "first_filing", "correction"
+        "vat", "iit", "cit_prepay", "settlement", "first_filing",
+        "registration", "audit", "correction",
     ]
     for workflow in workflows:
         assert len(workflow["steps"]) == 5

@@ -626,12 +626,15 @@ def _render_stamp() -> None:
 # =============================================================================
 def render() -> None:
     """渲染算税工作台。"""
+    from ui.components import explainers
+
     ui.page_header(
         "算税工作台",
         "确定性算税引擎：所有税额由本地代码计算，AI 只负责解释，不参与计算。",
         icon="🧮",
         right_text=f"当前季度：{period_label(current_quarter())}",
     )
+    explainers.basics()
     tabs = st.tabs(["增值税及附加", "企业所得税", "研发费用加计", "印花税"])
     with tabs[0]:
         _render_vat()

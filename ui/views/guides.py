@@ -182,7 +182,7 @@ def render() -> None:
     )
     workflows = content.list_workflows()
     labels = [f"{item.get('icon', '')} {item.get('title', '')}" for item in workflows]
-    selected_label = st.radio("选择流程", labels, horizontal=True, key="guide_workflow")
+    selected_label = st.selectbox("选择流程", labels, key="guide_workflow")
     selected = workflows[labels.index(selected_label)]
 
     metric_cols = st.columns(3)

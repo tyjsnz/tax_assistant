@@ -837,12 +837,15 @@ def theme_disclaimer() -> None:
 
 def render() -> None:
     """渲染台账管理页（四个 tab）。"""
+    from ui.components import explainers
+
     ui.page_header(
         "台账管理",
         "收入 / 费用 / 研发辅助账 / 合同台账，全部保存在本地 CSV，不上传云端。",
         icon="📒",
         right_text=f"当前季度：{period_label(current_quarter())}",
     )
+    explainers.basics()
     _show_flash()
     tabs = st.tabs(["💰 收入台账", "🧾 费用台账", "🔬 研发辅助账", "📄 合同台账"])
     with tabs[0]:
