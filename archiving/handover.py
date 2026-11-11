@@ -18,7 +18,9 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
+import os
 import shutil
 import tempfile
 import zipfile
@@ -31,6 +33,8 @@ import pandas as pd
 import config
 import workspace
 from ledger import models
+
+ENCRYPT_MAGIC = b"TAXHANDOVER1\n"
 
 
 def _safe_suffix(name: str) -> str:
@@ -106,6 +110,231 @@ def _write_excel(data_dir: Path, csv_files: list[Path], target: Path, summary: d
             if sheet in writer.sheets:
                 sheet = f"{sheet[:28]}_{len(writer.sheets)}"
             frame.to_excel(writer, sheet_name=sheet, index=False)
+
+
+def build_handover_receipt(result: dict[str, Any], path: str | Path | None = None) -> Path:
+    """生成交接签收单 PDF（双方签收、哈希确认）。"""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    font = "STSong-Light"
+    try:
+        pdfmetrics.registerFont(UnicodeCIDFont(font))
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"中文字体加载失败：{exc}") from exc
+    target = Path(path) if path else (
+        Path(config.EXPORT_DIR) / f"交接签收单_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    sample = getSampleStyleSheet()
+    title = ParagraphStyle("t", parent=sample["Title"], fontName=font, fontSize=18, leading=24, alignment=1)
+    body = ParagraphStyle("b", parent=sample["Normal"], fontName=font, fontSize=10.5, leading=17)
+    small = ParagraphStyle("s", parent=sample["Normal"], fontName=font, fontSize=9, leading=13, textColor=colors.HexColor("#555555"))
+    company = result.get("company") or {}
+    tables = result.get("tables") or {}
+    story = [
+        Paragraph("公司账套交接签收单", title),
+        Spacer(1, 8),
+        Paragraph(f"公司名称：{company.get('name') or '—'}", body),
+        Paragraph(f"统一社会信用代码：{company.get('unified_social_credit_code') or '—'}", body),
+        Paragraph(f"交接包文件：{Path(result.get('path')).name if result.get('path') else '—'}", body),
+        Paragraph(f"SHA-256：{result.get('sha256') or '—'}", body),
+        Paragraph(f"文件大小：{result.get('size', 0)} 字节 · 数据表：{len(tables)} 张 · 记录总数：{sum(tables.values())}", body),
+        Paragraph(f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}", body),
+        Spacer(1, 10),
+        Paragraph("数据表记录数", body),
+    ]
+    rows = [["数据表", "记录数"]] + [[name, str(count)] for name, count in tables.items()]
+    table = Table(rows, colWidths=[100 * mm, 50 * mm])
+    table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), font),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e6fffb")),
+    ]))
+    story.extend([
+        table,
+        Spacer(1, 14),
+        Paragraph("交接确认", body),
+        Paragraph("移交方（签字/盖章）：____________________    日期：________________", body),
+        Spacer(1, 12),
+        Paragraph("接收方（签字/盖章）：____________________    日期：________________", body),
+        Spacer(1, 12),
+        Paragraph("说明：接收方已核对 manifest.json 中的数据表记录数与 SHA-256；本签收单仅确认数据交接，不构成税务鉴证。", small),
+        Paragraph("官方发行版 · tax.flacn.net · 开发方 snz · 274043505@qq.com", small),
+    ])
+    SimpleDocTemplate(str(target), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
+                      topMargin=18 * mm, bottomMargin=18 * mm).build(story)
+    return target
+
+
+def _derive_key(password: str, salt: bytes) -> bytes:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    import base64
+
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=200_000)
+    return base64.urlsafe_b64encode(kdf.derive(str(password).encode("utf-8")))
+
+
+def encrypt_package(zip_path: str | Path, password: str, target: str | Path | None = None) -> Path:
+    """用密码加密交接包（PBKDF2 + Fernet），输出 .zip.enc。"""
+    from cryptography.fernet import Fernet
+
+    source = Path(zip_path)
+    if not source.exists():
+        raise FileNotFoundError(f"交接包不存在：{source}")
+    if not str(password or ""):
+        raise ValueError("加密密码不能为空")
+    target_path = Path(target) if target else source.with_suffix(".zip.enc")
+    salt = os.urandom(16)
+    token = Fernet(_derive_key(password, salt)).encrypt(source.read_bytes())
+    target_path.write_bytes(ENCRYPT_MAGIC + salt + token)
+    return target_path
+
+
+def decrypt_package(enc_path: str | Path, password: str, target: str | Path | None = None) -> Path:
+    """解密 .zip.enc，返回临时 zip 路径。"""
+    from cryptography.fernet import Fernet, InvalidToken
+
+    source = Path(enc_path)
+    raw = source.read_bytes()
+    if not raw.startswith(ENCRYPT_MAGIC):
+        raise ValueError("不是有效的加密交接包")
+    salt = raw[len(ENCRYPT_MAGIC): len(ENCRYPT_MAGIC) + 16]
+    token = raw[len(ENCRYPT_MAGIC) + 16:]
+    try:
+        data = Fernet(_derive_key(password, salt)).decrypt(token)
+    except InvalidToken as exc:
+        raise ValueError("密码不正确或交接包已损坏") from exc
+    target_path = Path(target) if target else Path(tempfile.gettempdir()) / f"handover_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    target_path.write_bytes(data)
+    return target_path
+
+
+def _zip_from_source(data: bytes, filename: str = "", password: str = "") -> tuple[zipfile.ZipFile, Path | None]:
+    """把上传的 zip/加密包转为 ZipFile；加密包先解密到临时文件。"""
+    suffix = Path(str(filename or "")).suffix.lower()
+    raw = bytes(data)
+    temp_path = None
+    if suffix == ".enc" or raw.startswith(ENCRYPT_MAGIC):
+        if not password:
+            raise ValueError("这是加密交接包，请填写密码。")
+        temp_path = decrypt_package_bytes(raw, password)
+        raw = temp_path.read_bytes()
+    try:
+        return zipfile.ZipFile(io.BytesIO(raw)), temp_path
+    except zipfile.BadZipFile as exc:
+        raise ValueError("文件不是有效的 zip 交接包") from exc
+
+
+def decrypt_package_bytes(raw: bytes, password: str) -> Path:
+    from cryptography.fernet import Fernet, InvalidToken
+
+    if not raw.startswith(ENCRYPT_MAGIC):
+        raise ValueError("不是有效的加密交接包")
+    salt = raw[len(ENCRYPT_MAGIC): len(ENCRYPT_MAGIC) + 16]
+    token = raw[len(ENCRYPT_MAGIC) + 16:]
+    try:
+        data = Fernet(_derive_key(password, salt)).decrypt(token)
+    except InvalidToken as exc:
+        raise ValueError("密码不正确或交接包已损坏") from exc
+    target = Path(tempfile.gettempdir()) / f"handover_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    target.write_bytes(data)
+    return target
+
+
+def inspect_handover_package(data: bytes, filename: str = "", password: str = "") -> dict[str, Any]:
+    """检查交接包：公司信息、表行数、哈希校验结果，不写入账套。"""
+    archive, temp = _zip_from_source(data, filename, password)
+    try:
+        names = set(archive.namelist())
+        if "manifest.json" not in names or "company.json" not in names:
+            raise ValueError("交接包缺少 manifest.json/company.json，可能不是有效交接包。")
+        manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+        company = json.loads(archive.read("company.json").decode("utf-8"))
+        errors = []
+        for item in manifest.get("files") or []:
+            name = str(item.get("path") or "")
+            try:
+                payload = archive.read(name)
+            except KeyError:
+                errors.append(f"缺少文件：{name}")
+                continue
+            actual = hashlib.sha256(payload).hexdigest()
+            if actual != str(item.get("sha256") or ""):
+                errors.append(f"哈希不匹配：{name}")
+        return {"ok": not errors, "manifest": manifest, "company": company, "errors": errors,
+                "tables": manifest.get("tables") or {}, "generated_at": manifest.get("generated_at")}
+    finally:
+        archive.close()
+        if temp and Path(temp).exists():
+            try:
+                Path(temp).unlink()
+            except OSError:
+                pass
+
+
+def import_handover_package(
+    data: bytes,
+    filename: str = "",
+    password: str = "",
+    *,
+    activate: bool = True,
+) -> dict[str, Any]:
+    """把交接包导入为一家新公司（不覆盖现有公司），返回新公司信息。"""
+    info = inspect_handover_package(data, filename, password)
+    if not info.get("ok"):
+        raise ValueError("交接包校验失败：" + "；".join(info.get("errors") or []))
+    archive, temp = _zip_from_source(data, filename, password)
+    try:
+        company = info["company"]
+        name = str(company.get("name") or "交接导入公司").strip()
+        existing_names = {str(item.get("name")) for item in workspace.list_companies()}
+        final_name = name if name not in existing_names else f"{name}（交接导入 {datetime.now().strftime('%m%d%H%M')}）"
+        payload = {key: company.get(key) for key in ("name", "short_name", "unified_social_credit_code",
+                                                     "tax_authority", "province", "city", "county",
+                                                     "region_id", "industry", "accounting_standard", "note")}
+        payload["name"] = final_name
+        record = workspace.add_company(payload, activate_new=False)
+        company_id = str(record.get("id"))
+        workspace.activate(company_id, persist=True)
+        data_dir = Path(config.DATA_DIR)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        copied = 0
+        for name in archive.namelist():
+            pure = Path(name)
+            if pure.is_absolute() or ".." in pure.parts:
+                continue
+            if name.startswith("data/") and name.endswith(".csv"):
+                target = data_dir / pure.name
+                target.write_bytes(archive.read(name))
+                copied += 1
+            elif name.startswith("archives/"):
+                target = data_dir / "archive" / Path(*pure.parts[1:])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(name))
+            elif name.startswith("uploads/"):
+                target = data_dir / "uploads" / Path(*pure.parts[1:])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(name))
+        if not activate:
+            # 已激活；调用方如需留在原公司可自行切回，这里保持新公司便于查看
+            pass
+        return {"company": record, "company_id": company_id, "copied_csv": copied,
+                "tables": info.get("tables") or {}, "name": final_name}
+    finally:
+        archive.close()
+        if temp and Path(temp).exists():
+            try:
+                Path(temp).unlink()
+            except OSError:
+                pass
 
 
 def build_handover_package(
@@ -212,7 +441,7 @@ def build_handover_package(
                 if item.is_file():
                     archive.write(item, arcname=str(item.relative_to(root)).replace("\\", "/"))
 
-    return {
+    result = {
         "path": Path(target),
         "size": Path(target).stat().st_size,
         "sha256": _sha256(Path(target)),
@@ -222,6 +451,11 @@ def build_handover_package(
         "include_archives": include_archives,
         "include_uploads": include_uploads,
     }
+    try:
+        result["receipt"] = build_handover_receipt(result)
+    except Exception:  # noqa: BLE001 - 签收单失败不影响交接包
+        result["receipt"] = None
+    return result
 
 
 __all__ = ["build_handover_package"]

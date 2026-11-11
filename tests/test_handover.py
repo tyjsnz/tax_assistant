@@ -47,3 +47,33 @@ def test_handover_excludes_secrets(tmp_path):
     build_handover_package(path=target)
     with zipfile.ZipFile(target) as archive:
         assert not any("user_settings" in name for name in archive.namelist())
+
+
+def test_handover_receipt_and_encryption(tmp_path):
+    from archiving import handover
+
+    result = handover.build_handover_package(path=tmp_path / "pkg.zip")
+    receipt = result.get("receipt")
+    assert receipt and Path(receipt).exists()
+    assert Path(receipt).stat().st_size > 1000
+    encrypted = handover.encrypt_package(result["path"], "test-pass", tmp_path / "pkg.zip.enc")
+    assert encrypted.exists() and encrypted.read_bytes().startswith(handover.ENCRYPT_MAGIC)
+    decrypted = handover.decrypt_package(encrypted, "test-pass", tmp_path / "dec.zip")
+    assert decrypted.exists() and decrypted.stat().st_size > 1000
+    import pytest
+
+    with pytest.raises(ValueError):
+        handover.decrypt_package(encrypted, "wrong-pass")
+
+
+def test_inspect_and_import_handover(tmp_path):
+    import workspace
+    from archiving import handover
+
+    result = handover.build_handover_package(path=tmp_path / "import.zip")
+    info = handover.inspect_handover_package(result["path"].read_bytes(), "import.zip")
+    assert info["ok"] is True
+    imported = handover.import_handover_package(result["path"].read_bytes(), "import.zip")
+    assert imported["company_id"]
+    assert imported["copied_csv"] >= 1
+    assert workspace.active_company_id() == imported["company_id"]

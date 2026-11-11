@@ -971,15 +971,29 @@ def _render_handover_section() -> None:
         include_archives = st.checkbox("包含申报归档文件（PDF/Excel）", value=True, key="handover_archives")
     with cols[1]:
         include_uploads = st.checkbox("包含原始附件（发票/截图，可能较大且含敏感信息）", value=False, key="handover_uploads")
+    enc_cols = st.columns(2)
+    with enc_cols[0]:
+        encrypt = st.checkbox("加密交接包（推荐，邮件/网盘传输时使用）", value=False, key="handover_encrypt")
+    with enc_cols[1]:
+        password = st.text_input("加密密码", type="password", key="handover_password", disabled=not encrypt)
     if st.button("📦 生成公司交接包", key="handover_build", type="primary", width="stretch"):
         try:
-            from archiving.handover import build_handover_package
+            from archiving.handover import build_handover_package, build_handover_receipt, encrypt_package
 
             with st.spinner("正在打包当前公司账套…"):
                 result = build_handover_package(
                     include_archives=include_archives,
                     include_uploads=include_uploads,
                 )
+                if encrypt:
+                    if not str(password or "").strip():
+                        st.error("请填写加密密码。")
+                        st.stop()
+                    encrypted = encrypt_package(result["path"], str(password))
+                    result["path"] = encrypted
+                    result["size"] = encrypted.stat().st_size
+                    result["sha256"] = __import__("hashlib").sha256(encrypted.read_bytes()).hexdigest()
+                    result["receipt"] = build_handover_receipt(result)
             st.session_state["_handover_result"] = result
             st.success("交接包已生成。")
         except Exception as exc:  # noqa: BLE001
@@ -1006,6 +1020,53 @@ def _render_handover_section() -> None:
                 width="stretch",
             )
         st.caption("交接包不含 API Key、全局设置与审计日志；原始附件按需勾选，请妥善保管。")
+        receipt = result.get("receipt")
+        if receipt:
+            receipt_path = Path(receipt)
+            if receipt_path.exists():
+                st.download_button(
+                    "⬇️ 下载交接签收单 PDF",
+                    data=receipt_path.read_bytes(),
+                    file_name=receipt_path.name,
+                    mime="application/pdf",
+                    key="handover_receipt_download",
+                    width="stretch",
+                )
+    with st.expander("📥 导入交接包（迁移到本机/新公司）", expanded=False):
+        st.caption("导入会创建一家新公司，不覆盖现有账套；支持普通 zip 或加密 .zip.enc。")
+        uploaded = st.file_uploader(
+            "选择交接包", type=["zip", "enc"], key="handover_import_upload"
+        )
+        import_password = st.text_input("加密密码（如为加密包）", type="password", key="handover_import_password")
+        if uploaded is not None:
+            if st.button("🔍 检查交接包", key="handover_import_inspect", width="stretch"):
+                try:
+                    from archiving.handover import inspect_handover_package
+
+                    info = inspect_handover_package(uploaded.getvalue(), uploaded.name, import_password)
+                    st.session_state["_handover_import_info"] = info
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"检查失败：{exc}")
+            info = st.session_state.get("_handover_import_info")
+            if info:
+                company = info.get("company") or {}
+                st.markdown(f"**{company.get('name') or '未知公司'}** · {company.get('unified_social_credit_code') or ''}")
+                st.caption(f"生成时间：{info.get('generated_at') or '—'} · 数据表：{len(info.get('tables') or {})} 张")
+                if info.get("errors"):
+                    for error in info["errors"][:10]:
+                        st.warning(error)
+                elif st.button("📥 导入为新公司", key="handover_import_do", type="primary", width="stretch"):
+                    try:
+                        from archiving.handover import import_handover_package
+
+                        result = import_handover_package(
+                            uploaded.getvalue(), uploaded.name, import_password
+                        )
+                        st.success(f"已导入为新公司：{result.get('name')}（{result.get('company_id')}），共 {result.get('copied_csv')} 张 CSV。")
+                        st.session_state.pop("_handover_import_info", None)
+                        st.rerun()
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"导入失败：{exc}")
 
 
 def _render_data_tab() -> None:
