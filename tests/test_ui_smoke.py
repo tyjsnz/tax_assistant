@@ -717,3 +717,12 @@ def test_invoice_reconcile_tab_renders() -> None:
     labels = [tab.label for tab in at.tabs]
     assert any("查重核对" in label for label in labels)
     assert at.button(key="collector_reconcile_check")
+
+
+def test_invoice_tasks_section_renders() -> None:
+    """发票归集：待生成凭证任务区块存在。"""
+    at = _new_app()
+    _goto(at, "📬 发票归集")
+    _assert_clean(at, "发票归集（待办）")
+    texts = "\n".join(str(item.value) for item in at.markdown)
+    assert "待生成凭证任务" in texts

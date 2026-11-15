@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.39.0-informational)
+![Version](https://img.shields.io/badge/version-1.40.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -42,6 +42,7 @@
 
 | 🚀 新手引导 | 5 步从零配置：公司信息 → 税务基础 → 第一笔账 → 第一次申报 → 完成；含 AI 无需 Key 提示 | 引导页 + 本地进度文件 |
 | 🔍 发票查重核对 | 按发票号码/代码识别重复，交叉核对收入/费用台账，判断之前是否已入账 | 发票池 + 台账本地核对 |
+| 🧾 待入账任务 | 把未入账/重复/冲突发票自动转成待办，导出 CSV，跳转票据与流水生成凭证 | 查重结果自动化 |
 | 🆘 资料找回 | 5 步找回申报/发票/个税/社保/流水；找回后检查数据完整性，补录历史申报并继续申报 | 本地清单 + 官方入口 + 进度保存 + 完整性检查 |
 | 🗓️ 报税日历 | 按月/季/年列出必申报事项、截止日、剩余天数和 3 步操作说明；支持 .ics 导出 + 手机扫码导入 + **按公司实际税种/员工/社保个性化过滤** | 申报日历引擎 + 确定性日期计算 |
 | 🏠 首页驾驶舱 | 🧮 算税工作台 |
@@ -660,4 +661,4 @@ data/
 
 ---
 
-*版本 1.39.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.40.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

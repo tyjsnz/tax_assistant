@@ -116,6 +116,59 @@ def check_one(keyword: str) -> dict[str, Any]:
     return {"keyword": text, "rows": checked}
 
 
+def build_tasks(recon: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """把未入账/重复/冲突发票转成待办任务。
+
+    * 重复发票只生成一条任务（保留一张入账，其余删除）；
+    * 信息冲突不自动入账，任务提示先核对；
+    * 一张发票一条任务，避免同一张发票刷出多条待办。
+    """
+    data = recon or reconcile()
+    tasks: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in data.get("rows") or []:
+        identity = str(row.get("identity") or "")
+        if identity in seen:
+            continue
+        verdict = str(row.get("verdict") or "")
+        if verdict == "已入账":
+            continue
+        seen.add(identity)
+        if verdict == "信息冲突":
+            action = "先核对：号码相同但金额/日期/方向/销售方不一致，暂不要入账"
+        elif verdict == "重复录入":
+            action = "保留一张发票入账，删除其余重复记录"
+        else:
+            action = "到「票据与流水」生成入账凭证"
+        tasks.append({
+            "invoice_id": row.get("id"),
+            "invoice_no": row.get("invoice_no") or identity,
+            "invoice_date": row.get("invoice_date"),
+            "direction": row.get("direction"),
+            "seller": row.get("seller"),
+            "total_inclusive": row.get("total_inclusive"),
+            "verdict": verdict,
+            "action": action,
+            "duplicate_count": row.get("duplicate_count"),
+        })
+    return tasks
+
+
+def export_tasks_csv(tasks: list[dict[str, Any]]) -> bytes:
+    import csv
+    import io
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["发票号码", "开票日期", "方向", "销售方", "价税合计", "判断", "处理建议", "重复张数"])
+    for task in tasks:
+        writer.writerow([
+            task.get("invoice_no"), task.get("invoice_date"), task.get("direction"), task.get("seller"),
+            task.get("total_inclusive"), task.get("verdict"), task.get("action"), task.get("duplicate_count"),
+        ])
+    return buffer.getvalue().encode("utf-8-sig")
+
+
 def explain_rules() -> list[str]:
     return [
         "发票号码是主键：同一号码重复出现，系统会标记重复；有发票代码时按「代码+号码」判断。",
@@ -126,4 +179,4 @@ def explain_rules() -> list[str]:
     ]
 
 
-__all__ = ["invoice_identity", "reconcile", "check_one", "explain_rules"]
+__all__ = ["invoice_identity", "reconcile", "check_one", "explain_rules", "build_tasks", "export_tasks_csv"]

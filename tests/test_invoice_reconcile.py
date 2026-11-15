@@ -23,3 +23,16 @@ def test_check_one():
     store.table("invoices").append({"invoice_no": "CHECK001", "invoice_date": "2026-03-03", "direction": "销项", "total_inclusive": 10, "status": "待匹配"})
     result = invoice_reconcile.check_one("CHECK001")
     assert result["rows"] and result["rows"][0]["posted"] is False
+
+
+def test_build_tasks_dedupes_one_per_invoice():
+    inv = store.table("invoices")
+    inv.append({"invoice_no": "TASK001", "invoice_date": "2026-04-01", "direction": "销项", "total_inclusive": 200, "status": "待匹配"})
+    inv.append({"invoice_no": "TASK001", "invoice_date": "2026-04-01", "direction": "销项", "total_inclusive": 200, "status": "待匹配"})
+    inv.append({"invoice_no": "TASK002", "invoice_date": "2026-04-02", "direction": "进项", "total_inclusive": 50, "status": "已入账"})
+    tasks = invoice_reconcile.build_tasks()
+    nos = [task["invoice_no"] for task in tasks]
+    assert nos.count("TASK001") == 1
+    assert "TASK002" not in nos
+    data = invoice_reconcile.export_tasks_csv(tasks)
+    assert "发票号码" in data.decode("utf-8-sig")

@@ -395,6 +395,41 @@ def _render_reconcile() -> None:
             width="stretch",
         )
 
+    tasks = invoice_reconcile.build_tasks(result)
+    with st.container(border=True):
+        st.markdown("**🧾 待生成凭证任务**")
+        st.caption("把未入账/重复/冲突发票自动转成待办；已入账发票不会出现在这里。")
+        cols = st.columns(3)
+        cols[0].metric("待处理任务", len(tasks))
+        cols[1].metric("未入账", sum(1 for task in tasks if task.get("verdict") == "未入账"))
+        cols[2].metric("重复/冲突", sum(1 for task in tasks if task.get("verdict") in {"重复录入", "信息冲突"}))
+        if tasks:
+            task_frame = pd.DataFrame([
+                {
+                    "发票号码": task.get("invoice_no"), "开票日期": task.get("invoice_date"),
+                    "方向": task.get("direction"), "销售方": task.get("seller"),
+                    "价税合计": task.get("total_inclusive"), "判断": task.get("verdict"),
+                    "处理建议": task.get("action"),
+                }
+                for task in tasks
+            ])
+            st.dataframe(
+                task_frame, hide_index=True, alt="待生成凭证的发票任务清单",
+                column_config={"价税合计": st.column_config.NumberColumn("价税合计", format="¥%.2f")},
+            )
+            st.download_button(
+                "⬇️ 下载待办任务 CSV",
+                data=invoice_reconcile.export_tasks_csv(tasks),
+                file_name="发票待入账任务.csv",
+                mime="text/csv",
+                key="collector_tasks_download",
+                width="stretch",
+            )
+            if st.button("去「票据与流水」处理这些发票", key="collector_tasks_goto", type="primary", width="stretch"):
+                nav.goto(nav.PAGE_INGEST)
+        else:
+            st.success("没有待处理的发票：当前发票都已入账，或还没有导入发票。")
+
     with st.container(border=True):
         st.markdown("**查一张发票**")
         keyword = st.text_input("输入发票号码、发票代码或销售方", key="collector_reconcile_keyword", placeholder="例如：26312000000123456789")
