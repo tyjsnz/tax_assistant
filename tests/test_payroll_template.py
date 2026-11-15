@@ -27,6 +27,8 @@ def test_export_template_with_ids(tmp_path):
     assert sheet.cell_value(1, headers.index("*证件号码")) == "530101199001011234"
     assert sheet.cell_value(1, headers.index("本期收入")) == 8000
     assert sheet.cell_value(1, headers.index("基本养老保险费")) == 400
+    assert len(headers) == 30
+    assert sheet.cell_value(1, headers.index("累计子女教育")) == 0
 
 
 def test_save_copy_to_desktop(tmp_path, monkeypatch):

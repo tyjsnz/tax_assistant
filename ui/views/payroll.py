@@ -974,7 +974,7 @@ def _render_payroll_tab() -> None:
                             key="payroll_template_download",
                             width="stretch",
                         )
-                st.caption("累计专项附加扣除分项目前导出为 0；如本月有专项附加，请在模板中按员工补齐。")
+                st.caption("模板全部 30 列按原表头导出；专项附加分项有员工档案明细时自动填入，未维护的为 0，请核对。")
 
     _render_confirm_result(period)
 
