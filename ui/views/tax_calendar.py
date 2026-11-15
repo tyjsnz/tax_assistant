@@ -10,6 +10,7 @@ import streamlit as st
 
 import config
 from engine.calendar_export import build_ics
+from engine.calendar_profile import SCOPE_KEYS, filter_deadlines, load_profile, save_profile, scope_text
 from engine.tax_calendar import deadline_status, filing_deadlines
 from ui.components import nav, theme, ui
 
@@ -77,11 +78,37 @@ def _task_month(item: dict[str, Any]) -> int:
     return int(str(item.get("due_date") or "")[5:7] or 0)
 
 
-def _year_tasks(year: int) -> list[dict[str, Any]]:
+def _year_tasks(year: int, profile: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     items = filing_deadlines(year)
+    if profile is not None:
+        items = filter_deadlines(items, profile)
     for item in items:
         item.update(deadline_status(item["due_date"]))
     return items
+
+
+def _render_scope_settings() -> dict[str, Any]:
+    """我的申报范围：隐藏不相关事项，形成个性化日历。"""
+    profile = load_profile()
+    with st.expander("⚙️ 我的申报范围（个性化日历）", expanded=False):
+        st.caption("不确定的项目可以保持勾选；隐藏后日历和待办只显示与你相关的申报。")
+        cols = st.columns(3)
+        values = {}
+        keys = list(SCOPE_KEYS)
+        for index, key in enumerate(keys):
+            with cols[index % 3]:
+                values[key] = st.checkbox(SCOPE_KEYS[key], value=bool(profile.get(key)), key=f"cal_scope_{key}")
+        sub = st.columns(2)
+        with sub[0]:
+            has_employees = st.checkbox("有员工/发工资（个税按月）", value=bool(profile.get("has_employees")), key="cal_scope_employees")
+        with sub[1]:
+            pay_social = st.checkbox("缴纳社保（社保按月）", value=bool(profile.get("pay_social")), key="cal_scope_pay_social")
+        if st.button("💾 保存我的范围", key="cal_scope_save", type="primary", width="stretch"):
+            updated = {**values, "has_employees": has_employees, "pay_social": pay_social}
+            save_profile(updated)
+            st.success("已保存，日历已按你的范围过滤。")
+            st.rerun()
+    return profile
 
 
 def _render_task_card(item: dict[str, Any], index: int) -> None:
@@ -149,7 +176,7 @@ def _render_summary() -> None:
     )
 
 
-def _render_month_view(year: int) -> None:
+def _render_month_view(year: int, profile: dict[str, Any] | None = None) -> None:
     today = date.today()
     month = st.selectbox(
         "选择月份",
@@ -158,7 +185,7 @@ def _render_month_view(year: int) -> None:
         format_func=lambda m: f"{year} 年 {m} 月",
         key="calendar_month",
     )
-    items = [item for item in _year_tasks(year) if _task_month(item) == month]
+    items = [item for item in _year_tasks(year, profile) if _task_month(item) == month]
     if not items:
         st.info("本月没有系统内置的申报事项；仍建议核对税种认定和当地通知。")
     for index, item in enumerate(items):
@@ -174,8 +201,8 @@ def _render_month_view(year: int) -> None:
         )
 
 
-def _render_year_view(year: int) -> None:
-    items = _year_tasks(year)
+def _render_year_view(year: int, profile: dict[str, Any] | None = None) -> None:
+    items = _year_tasks(year, profile)
     if not items:
         st.info("没有生成申报事项。")
         return
@@ -247,13 +274,15 @@ def render() -> None:
         icon="🗓️",
     )
     today = date.today()
+    profile = _render_scope_settings()
     year = st.selectbox("年份", [today.year, today.year + 1], index=0, key="calendar_year")
+    st.caption(f"当前范围：{scope_text(profile)}（可在上方「我的申报范围」调整）")
     tabs = st.tabs(["📌 先看必做", "📅 当月待办", "🗓️ 全年日历"])
     with tabs[0]:
         _render_summary()
     with tabs[1]:
-        _render_month_view(year)
+        _render_month_view(year, profile)
     with tabs[2]:
-        _render_year_view(year)
+        _render_year_view(year, profile)
     _render_mobile_import()
     theme.disclaimer()
