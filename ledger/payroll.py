@@ -144,6 +144,19 @@ def _find_pay_entries(period: str) -> list[dict[str, Any]]:
 # =============================================================================
 # 工资表生成 / 查询 / 编辑
 # =============================================================================
+def _previous_payroll_row(employee_id: str, period: str) -> dict[str, Any] | None:
+    """取该员工目标月份之前最近一期工资行，用于新月份自动带出上月底稿。"""
+    text = normalize_month(period)
+    candidates = [
+        row for row in _payroll_rows()
+        if _text(row.get("employee_id")) == str(employee_id) and _text(row.get("period")) < text
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda row: _text(row.get("period")), reverse=True)
+    return candidates[0]
+
+
 def build_payroll(period: str, *, employee_ids: list[str] | None = None) -> dict[str, Any]:
     """为当月在职员工生成工资表草稿；同员工同期间已有记录则跳过。"""
     text = normalize_month(period)
@@ -166,17 +179,20 @@ def build_payroll(period: str, *, employee_ids: list[str] | None = None) -> dict
                 }
             )
             continue
+        previous = _previous_payroll_row(employee_id, text)
+        carried_fields = ("gross_salary", "bonus", "allowance", "social_insurance", "housing_fund", "special_deduction", "other_deduction")
+        if previous is not None:
+            base_values = {field: round2(previous.get(field)) for field in carried_fields}
+            note = f"以上月 {previous.get('period')} 工资为草稿基础（{previous.get('period')}），请核对后重算"
+        else:
+            base_values = {field: 0.0 for field in carried_fields}
+            base_values["special_deduction"] = employees_module.special_deduction_monthly(employee)
+            note = ""
         record = {
             "period": text,
             "employee_id": employee_id,
             "employee_name": _text(employee.get("name")),
-            "gross_salary": 0.0,
-            "bonus": 0.0,
-            "allowance": 0.0,
-            "social_insurance": 0.0,
-            "housing_fund": 0.0,
-            "special_deduction": employees_module.special_deduction_monthly(employee),
-            "other_deduction": 0.0,
+            **base_values,
             "cumulative_income": 0.0,
             "cumulative_basic_deduction": 0.0,
             "cumulative_social": 0.0,
@@ -189,13 +205,13 @@ def build_payroll(period: str, *, employee_ids: list[str] | None = None) -> dict
             "zero_declaration": False,
             "status": "草稿",
             "journal_entry_no": "",
-            "note": "",
+            "note": note,
         }
         created.append(table(TABLE_NAME).append(record))
     if created:
         log_user_action(
             "生成工资表",
-            f"{text}：新增 {len(created)} 行草稿，跳过 {len(skipped)} 人（已有记录）",
+            f"{text}：新增 {len(created)} 行草稿（能取到上月的已自动带出），跳过 {len(skipped)} 人（已有记录）",
         )
     return {"period": text, "created": len(created), "skipped": skipped, "rows": created}
 

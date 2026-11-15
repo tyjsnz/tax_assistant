@@ -562,3 +562,21 @@ class TestConfirmAndDeclare:
         payroll.build_payroll("2026-02", employee_ids=[employee["id"]])
         assert payroll.payroll_periods() == ["2026-02", "2026-01"]
         assert payroll.payroll_periods(limit=1) == ["2026-02"]
+
+
+def test_build_payroll_carries_previous_month_values():
+    """新月份生成工资表时，应带出上月收入/社保/公积金/专项附加，但累计数归零。"""
+    employee = _add_employee()
+    payroll.create_import_draft(
+        "2026-10", employee["id"], employee["name"],
+        gross_salary=4800, social_insurance=120, housing_fund=300, special_deduction=1000,
+    )
+    result = payroll.build_payroll("2026-11", employee_ids=[employee["id"]])
+    row = result["rows"][0]
+    assert row["gross_salary"] == 4800
+    assert row["social_insurance"] == 120
+    assert row["housing_fund"] == 300
+    assert row["special_deduction"] == 1000
+    assert row["cumulative_income"] == 0
+    assert row["tax_withheld"] == 0
+    assert "2026-10" in row["note"]
