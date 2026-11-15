@@ -41,14 +41,30 @@ for package in ("streamlit", "webview"):
     _collect(package)
 
 PACKAGES = ("ui", "agent", "engine", "ledger", "filing", "closing", "archiving", "ingest", "knowledge", "onboarding", "integrations", "guidebooks", "automation", "ocr")
+
+
+def _modules_from_package(package: str) -> list[str]:
+    """直接从源码目录枚举所有 .py，避免 collect_submodules 在 spec 环境下导入失败而静默漏包。"""
+    package_dir = ROOT / package
+    modules: list[str] = []
+    if not package_dir.is_dir():
+        return modules
+    for path in package_dir.rglob("*.py"):
+        rel = path.relative_to(ROOT).with_suffix("")
+        parts = list(rel.parts)
+        if parts and parts[-1] == "__init__":
+            parts = parts[:-1]
+        if parts:
+            modules.append(".".join(parts))
+    return modules
+
+
 for package in PACKAGES:
-    # 顶层包自身必须显式加入，否则 __init__.py 可能不会被打包；
-    # 动态页面（ui.views.*）依赖这个入口，缺了会出现 ImportError。
     hiddenimports.append(package)
-    try:
-        hiddenimports.extend(collect_submodules(package))
-    except Exception:
-        pass
+    hiddenimports.extend(_modules_from_package(package))
+
+# 根目录核心模块
+hiddenimports += ["config", "workspace"]
 
 # 这些是页面动态导入链上的关键子模块，显式兜底
 hiddenimports += [

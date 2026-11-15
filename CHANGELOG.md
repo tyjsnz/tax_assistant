@@ -3,6 +3,15 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循语义化版本 `MAJOR.MINOR.PATCH`。
 
+## [v1.35.2] - 2026-11-15
+
+### 修复
+- 桌面版仍有部分动态页面模块漏打包（`engine.calendar_profile`、`engine.invoice_rules`、
+  `guidebooks.content`、`ledger.settlement`、`filing.cit_annual` 等）；
+- PyInstaller spec 改为**直接枚举包内全部 .py 文件**，不再依赖 spec 环境下可能失败的
+  `collect_submodules`；打包版逐页实测 18 个页面均正常。
+- 全量 853 项测试通过；官网/下载包/在线演示更新 v1.35.2。
+
 ## [v1.35.1] - 2026-11-15
 
 ### 修复
