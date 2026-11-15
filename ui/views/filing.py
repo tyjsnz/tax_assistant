@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Sequence
@@ -369,6 +371,31 @@ def _export_checklist(period: str, bundles: Sequence[dict]) -> Path:
     return target
 
 
+def _save_file_to_desktop(path: Path) -> Path:
+    """桌面版保存导出文件到桌面。"""
+    desktop = Path.home() / "Desktop"
+    desktop.mkdir(parents=True, exist_ok=True)
+    target = desktop / path.name
+    shutil.copy2(path, target)
+    return target
+
+
+def _open_file_location(path: Path) -> None:
+    """在 Finder/资源管理器中定位文件。"""
+    try:
+        import platform
+
+        system = platform.system().lower()
+        if system == "darwin":
+            subprocess.Popen(["open", "-R", str(path)])
+        elif system == "windows":
+            subprocess.Popen(["explorer", "/select,", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path.parent)])
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"无法自动打开文件夹，请手动到：{path}")
+
+
 def _render_export(period: str, bundles: Sequence[dict]) -> None:
     ui.section("📦 导出申报包", "Excel 工作簿含各申报表与提交核对清单，便于对照电子税务局逐栏录入。")
     cols = st.columns(2)
@@ -391,31 +418,50 @@ def _render_export(period: str, bundles: Sequence[dict]) -> None:
                 st.session_state["_filing_checklist_path"] = str(path)
                 st.success("核对清单已生成")
 
-    download_cols = st.columns(2)
     excel_path = st.session_state.get("_filing_excel_path")
-    with download_cols[0]:
-        if excel_path and Path(excel_path).exists():
-            file_path = Path(excel_path)
-            st.download_button(
-                "⬇️ 下载 Excel 申报包",
-                data=file_path.read_bytes(),
-                file_name=file_path.name,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="filing_download_excel",
-                width="stretch",
-            )
     checklist_path = st.session_state.get("_filing_checklist_path")
-    with download_cols[1]:
-        if checklist_path and Path(checklist_path).exists():
-            file_path = Path(checklist_path)
-            st.download_button(
-                "⬇️ 下载核对清单",
-                data=file_path.read_bytes(),
-                file_name=file_path.name,
-                mime="text/markdown",
-                key="filing_download_checklist",
-                width="stretch",
-            )
+    if config.FROZEN:
+        for label, path_text in (("Excel 申报包", excel_path), ("核对清单", checklist_path)):
+            if not path_text or not Path(path_text).exists():
+                continue
+            file_path = Path(path_text)
+            st.caption(f"{label}已生成：{file_path}")
+            cols = st.columns(2)
+            with cols[0]:
+                if st.button(f"💾 保存{label}到桌面", key=f"filing_save_desktop_{label}", type="primary", width="stretch"):
+                    try:
+                        target = _save_file_to_desktop(file_path)
+                        st.success(f"已保存到：{target}")
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"保存失败：{exc}")
+            with cols[1]:
+                if st.button(f"📂 打开{label}所在文件夹", key=f"filing_open_folder_{label}", width="stretch"):
+                    _open_file_location(file_path)
+        st.caption("桌面版请用「保存到桌面」；网页版可直接下载。")
+    else:
+        download_cols = st.columns(2)
+        with download_cols[0]:
+            if excel_path and Path(excel_path).exists():
+                file_path = Path(excel_path)
+                st.download_button(
+                    "⬇️ 下载 Excel 申报包",
+                    data=file_path.read_bytes(),
+                    file_name=file_path.name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="filing_download_excel",
+                    width="stretch",
+                )
+        with download_cols[1]:
+            if checklist_path and Path(checklist_path).exists():
+                file_path = Path(checklist_path)
+                st.download_button(
+                    "⬇️ 下载核对清单",
+                    data=file_path.read_bytes(),
+                    file_name=file_path.name,
+                    mime="application/octet-stream",
+                    key="filing_download_checklist",
+                    width="stretch",
+                )
 
 
 # =============================================================================
