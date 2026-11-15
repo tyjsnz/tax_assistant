@@ -109,6 +109,79 @@ def _render_email() -> None:
                 st.error(f"拉取失败：{exc}")
 
 
+def _render_ocr() -> None:
+    """DeepSeek OCR：识别图片/扫描 PDF 发票，预览后入池。"""
+    from integrations import deepseek_tools, invoice_ocr
+
+    st.caption(
+        "用 DeepSeek OCR 识别拍照/扫描发票的号码、日期、金额、购销方；只做预览，"
+        "确认后才入发票池，不直接入账、不替代查验。"
+    )
+    if not deepseek_tools.is_configured():
+        st.warning("未配置 DeepSeek API Key，OCR 不可用；请先到「设置 → API 与模型」填写。")
+        if st.button("⚙️ 去设置", key="collector_ocr_goto_settings"):
+            from ui.components import nav
+
+            nav.goto(nav.PAGE_SETTINGS)
+        return
+    st.info(
+        "隐私提示：上传的发票图片/PDF 会发送到 DeepSeek OCR 服务；请确认你同意后再使用。"
+        "处理完成后系统不保留上传原文件（仅保留发票字段与 OCR 文本摘要）。",
+        icon="🔐",
+    )
+    consent = st.checkbox("我同意将本次发票文件发送到 DeepSeek OCR", key="collector_ocr_consent")
+    uploaded = st.file_uploader(
+        "选择发票图片/PDF（PNG/JPG/PDF，≤100MB）",
+        type=["png", "jpg", "jpeg", "pdf"],
+        key="collector_ocr_upload",
+    )
+    if uploaded is not None and st.button("📄 OCR 识别", key="collector_ocr_run", type="primary", width="stretch", disabled=not consent):
+        try:
+            with st.spinner("正在调用 DeepSeek OCR…"):
+                result = invoice_ocr.recognize_invoice(uploaded.getvalue(), uploaded.name)
+            st.session_state["_ocr_result"] = result
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"OCR 识别失败：{exc}")
+    result = st.session_state.get("_ocr_result")
+    if not result:
+        st.caption("先勾选同意，再选择文件识别。")
+        return
+    if not result.get("ok"):
+        for error in result.get("errors") or []:
+            st.warning(error)
+        with st.expander("OCR 原始文本", expanded=False):
+            st.text_area("OCR 文本", value=str(result.get("text") or "")[:12000], height=220, key="ocr_raw_text")
+        return
+    invoice = result.get("invoice") or {}
+    st.success("OCR 识别完成，请核对以下字段后入池。")
+    st.dataframe(
+        [{
+            "发票号码": invoice.get("invoice_no"),
+            "开票日期": invoice.get("invoice_date"),
+            "发票类型": invoice.get("invoice_type"),
+            "方向": invoice.get("direction"),
+            "销售方": invoice.get("seller"),
+            "购买方": invoice.get("buyer"),
+            "不含税金额": invoice.get("amount_exclusive"),
+            "税额": invoice.get("tax_amount"),
+            "价税合计": invoice.get("total_inclusive"),
+        }],
+        width="stretch", hide_index=True,
+    )
+    for warning in result.get("warnings") or []:
+        st.warning(warning)
+    with st.expander("OCR 原始文本", expanded=False):
+        st.text_area("OCR 文本", value=str(result.get("text") or "")[:12000], height=220, key="ocr_raw_text_2")
+    if st.button("✅ 确认入池", key="collector_ocr_save", type="primary", width="stretch"):
+        try:
+            record = invoice_ocr.save_invoice(invoice, uploaded.name if uploaded else "OCR")
+            st.success(f"已入发票池：{record.get('invoice_no') or record.get('id')}")
+            st.session_state.pop("_ocr_result", None)
+            st.rerun()
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"入池失败：{exc}")
+
+
 def _render_review() -> None:
     """发票查验辅助：二维码解码 + 官方入口 + 复核/查验状态。"""
     from ingest import invoice_review
@@ -287,16 +360,18 @@ def render() -> None:
         "本页采用两条合规路径：**手工导出到文件夹** + **专用邮箱 IMAP 只读拉取**。",
         icon="🔐",
     )
-    tabs = st.tabs(["📁 本地文件夹", "📧 邮箱归集", "🔎 查验复核", "📊 对账看板", "📋 归集记录"])
+    tabs = st.tabs(["📁 本地文件夹", "📧 邮箱归集", "📄 发票 OCR", "🔎 查验复核", "📊 对账看板", "📋 归集记录"])
     with tabs[0]:
         _render_folder()
     with tabs[1]:
         _render_email()
     with tabs[2]:
-        _render_review()
+        _render_ocr()
     with tabs[3]:
-        _render_dashboard()
+        _render_review()
     with tabs[4]:
+        _render_dashboard()
+    with tabs[5]:
         _render_logs()
     st.caption("导入后请到「📥 票据与流水」核对；高置信匹配可到「⚡ AI 代办」一键入账。")
     theme.disclaimer()

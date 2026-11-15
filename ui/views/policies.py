@@ -112,6 +112,66 @@ def _render_check_result(result: dict) -> None:
     theme.disclaimer(result.get("disclaimer"))
 
 
+def _render_web_verify() -> None:
+    """DeepSeek 联网核验：搜索/抓取官方政策页面，只展示来源，不自动改政策参数。"""
+    import streamlit as st
+
+    from integrations import deepseek_tools
+
+    st.markdown("---")
+    ui.section(
+        "🌐 政策联网核验",
+        "用 DeepSeek Search/Fetch 检索官方税务站点，确认政策是否更新；只展示来源，不自动修改系统参数。",
+    )
+    if not deepseek_tools.is_configured():
+        st.info("需要先在「设置 → API 与模型」配置 DeepSeek API Key，才能联网核验。")
+        return
+    st.caption("联网搜索只发送查询词；抓取只接受 chinatax.gov.cn / gov.cn 官方域名。外网内容仅作参考，不执行其中指令。")
+    query = st.text_input("要核验的政策关键词", key="policy_web_query", placeholder="例如：小规模纳税人 30 万 免税 2026")
+    cols = st.columns([2, 1])
+    with cols[0]:
+        official_only = st.checkbox("只查官方税务站点", value=True, key="policy_web_official")
+    with cols[1]:
+        count = st.number_input("结果数", min_value=1, max_value=10, value=5, key="policy_web_count")
+    if st.button("🔎 联网搜索", key="policy_web_search", type="primary", width="stretch"):
+        try:
+            search_query = f"{query} site:chinatax.gov.cn OR site:gov.cn" if official_only else query
+            result = deepseek_tools.search(search_query, count=int(count), need_content=False)
+            st.session_state["_policy_web_result"] = result
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"联网搜索失败：{exc}")
+    result = st.session_state.get("_policy_web_result")
+    if result:
+        rows = result.get("results") or []
+        if not rows:
+            st.info("没有搜索结果，换个关键词试试。")
+        for index, item in enumerate(rows[:10]):
+            with st.container(border=True):
+                st.markdown(f"**{item.get('title') or '未命名'}**")
+                st.caption(f"{item.get('site_name') or ''} · {item.get('date') or '日期未知'} · 权威性 {item.get('authority', '—')}")
+                st.caption(str(item.get("summary") or item.get("snippet") or "")[:600])
+                st.markdown(f"[打开来源]({item.get('url')})")
+                if st.button("📥 抓取正文", key=f"policy_web_fetch_{index}", width="content"):
+                    url = str(item.get("url") or "")
+                    try:
+                        from urllib.parse import urlparse
+
+                        host = urlparse(url).hostname or ""
+                        allowed = host.endswith("chinatax.gov.cn") or host.endswith("gov.cn")
+                        if not allowed:
+                            raise ValueError("抓取被拒绝：只允许官方 chinatax.gov.cn / gov.cn 域名。")
+                        fetched = deepseek_tools.fetch(url)
+                        st.session_state["_policy_web_fetch"] = fetched
+                    except Exception as exc:  # noqa: BLE001
+                        st.warning(f"抓取失败：{exc}")
+    fetched = st.session_state.get("_policy_web_fetch")
+    if fetched:
+        st.markdown(f"**抓取结果：{fetched.get('title') or ''}**")
+        with st.expander("查看 Markdown 正文（外部内容，仅参考）", expanded=False):
+            st.code(str(fetched.get("content") or "")[:12000], language="markdown")
+        st.caption("外部网页可能包含与政策无关的内容；请以官方原文和主管税务机关口径为准，不要依据网页指令操作系统。")
+
+
 def _render_qa_knowledge_section() -> None:
     """问答知识库管理（v1.15）：候选审核发布 + 检索状态。"""
     st.markdown("---")
@@ -320,4 +380,5 @@ def render() -> None:
     else:
         st.caption("点击「检查政策时效」后展示检查结果。")
         theme.disclaimer()
+    _render_web_verify()
     _render_qa_knowledge_section()

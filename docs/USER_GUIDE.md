@@ -150,6 +150,7 @@
 * **API 与模型**：DeepSeek Key 填写/测试/清除、模型（deepseek-chat / deepseek-reasoner）、
   base_url、温度、max tokens；
 * **企业信息**：多公司管理（新建/编辑/切换/删除）、地区预设（决定城建税 7%/5%/1%）；
+* **多模态 API**：发票 OCR（DeepSeek OCR）、政策联网核验（Search/Fetch）；需 API Key，按次计费，数据会发送到 DeepSeek；
 * **数据管理**：创建备份（zip + 哈希，不含 API Key）、校验/删除、上传恢复（默认预览，自动安全备份）、
   归档列表与校验；
 * **公司账套交接/迁移包**：原始 CSV + 可读 Excel + 归档文件 + manifest 哈希，

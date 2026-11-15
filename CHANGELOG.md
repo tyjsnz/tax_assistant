@@ -3,6 +3,16 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循语义化版本 `MAJOR.MINOR.PATCH`。
 
+## [v1.30.0] - 2026-11-14
+
+### 新增
+- **发票 OCR（DeepSeek OCR）**：图片/扫描 PDF 发票识别，预览号码/日期/金额/购销方后确认入池；
+  只做预览，不直接入账；需 API Key 并同意上传文件。
+- **政策联网核验（DeepSeek Search/Fetch）**：检索官方税务站点、抓取正文、展示来源与日期；
+  不自动修改政策参数，外网内容仅参考。
+- 新增 `integrations/deepseek_tools.py`（OCR/Search/Fetch 客户端，错误中文化、超时与大小限制）。
+- 全量离线测试 845 项；官网/下载包/在线演示更新 v1.30.0。
+
 ## [v1.29.1] - 2026-11-12
 
 ### 修复
