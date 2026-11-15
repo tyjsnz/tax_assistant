@@ -33,6 +33,7 @@ PAGES = [
     "📊 汇算清缴",
     "🔍 申报核对",
     "📖 操作指引",
+    "🆘 资料找回",
     "📚 政策知识库",
     "🤖 AI 助手",
     "⚙️ 设置",
@@ -62,7 +63,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 18 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 19 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     labels = [button.label for button in at.button]
@@ -686,3 +687,12 @@ def test_filing_social_insurance_tab_renders() -> None:
     labels = [tab.label for tab in at.tabs]
     assert any("社保费" in label for label in labels)
     assert at.button(key="social_build")
+
+
+def test_recovery_page_renders() -> None:
+    """资料找回：5 步清单与下载按钮正常渲染。"""
+    at = _new_app()
+    _goto(at, "🆘 资料找回")
+    _assert_clean(at, "资料找回")
+    assert at.checkbox(key="recovery_step_1")
+    assert at.checkbox(key="recovery_step_5")
