@@ -5,8 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from ingest import collector
-from ui.components import theme, ui
+from ingest import collector, invoice_reconcile
+from ui.components import nav, theme, ui
 
 
 def _render_folder() -> None:
@@ -348,6 +348,89 @@ def _render_logs() -> None:
     )
 
 
+def _render_reconcile() -> None:
+    """发票查重与入账核对。"""
+    st.caption(
+        "回答两个问题：这张发票之前是不是已经做账了？补录/导入时是不是重复了？"
+        "系统按发票号码、发票池状态和收入/费用台账交叉核对，不访问电子税务局。"
+    )
+    try:
+        result = invoice_reconcile.reconcile()
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"核对失败：{exc}")
+        return
+    summary = result.get("summary") or {}
+    ui.metric_row(
+        [
+            {"label": "发票总数", "value": f"{summary.get('total', 0)}"},
+            {"label": "已入账", "value": f"{summary.get('posted', 0)}"},
+            {"label": "未入账", "value": f"{summary.get('unposted', 0)}"},
+            {"label": "重复 / 冲突", "value": f"{summary.get('duplicate', 0)}"},
+        ],
+        columns=4,
+    )
+    if not result.get("rows"):
+        st.info("发票池为空。先到「本地文件夹」/「邮箱归集」导入发票，或手工补录后再核对。")
+    else:
+        frame = pd.DataFrame([
+            {
+                "判断": row.get("verdict"), "发票号码": row.get("invoice_no") or row.get("identity"),
+                "开票日期": row.get("invoice_date"), "方向": row.get("direction"),
+                "销售方": row.get("seller"), "价税合计": row.get("total_inclusive"),
+                "台账匹配": row.get("ledger_text"), "重复张数": row.get("duplicate_count"),
+                "备注": row.get("note"),
+            }
+            for row in result["rows"]
+        ])
+        st.dataframe(
+            frame, hide_index=True, alt="发票池查重与入账核对结果",
+            column_config={"价税合计": st.column_config.NumberColumn("价税合计", format="¥%.2f")},
+        )
+        st.download_button(
+            "⬇️ 下载核对结果 CSV",
+            data=frame.to_csv(index=False).encode("utf-8-sig"),
+            file_name="发票查重核对.csv",
+            mime="text/csv",
+            key="collector_reconcile_download",
+            width="stretch",
+        )
+
+    with st.container(border=True):
+        st.markdown("**查一张发票**")
+        keyword = st.text_input("输入发票号码、发票代码或销售方", key="collector_reconcile_keyword", placeholder="例如：26312000000123456789")
+        if st.button("查重并核对台账", key="collector_reconcile_check", type="primary", width="stretch"):
+            try:
+                found = invoice_reconcile.check_one(keyword)
+                st.session_state["_collector_reconcile_found"] = found
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"查询失败：{exc}")
+        found = st.session_state.get("_collector_reconcile_found")
+        if isinstance(found, dict):
+            if not found.get("rows"):
+                st.warning("发票池里没有找到这张发票。可能是还没导入，或号码输入有误。")
+            for row in found["rows"]:
+                status = "✅ 已入账" if row.get("posted") else "⚠️ 未入账"
+                st.markdown(f"### {status} · {row.get('invoice_no') or '无号码'}")
+                st.caption(
+                    f"开票日期：{row.get('invoice_date') or '—'} · 方向：{row.get('direction') or '—'} · "
+                    f"销售方：{row.get('seller') or '—'} · 价税合计：¥{float(row.get('total_inclusive') or 0):,.2f} · "
+                    f"池状态：{row.get('status') or '—'}"
+                )
+                if row.get("ledger_matches"):
+                    st.success("已在台账中找到对应记录：" + "、".join(
+                        f"{m['kind']} {m['id']}（{m['date']}，¥{float(m['amount'] or 0):,.2f}）"
+                        for m in row["ledger_matches"]
+                    ))
+                else:
+                    st.warning("台账中没有按发票号码匹配到收入/费用记录；如确认未入账，请到「票据与流水」生成入账凭证。")
+
+    with st.expander("判定规则说明", expanded=False):
+        for rule in invoice_reconcile.explain_rules():
+            st.markdown(f"- {rule}")
+    if st.button("去「票据与流水」处理未入账发票", key="collector_reconcile_goto", width="stretch"):
+        nav.goto(nav.PAGE_INGEST)
+
+
 def render() -> None:
     """渲染发票归集页。"""
     ui.page_header(
@@ -360,7 +443,7 @@ def render() -> None:
         "本页采用两条合规路径：**手工导出到文件夹** + **专用邮箱 IMAP 只读拉取**。",
         icon="🔐",
     )
-    tabs = st.tabs(["📁 本地文件夹", "📧 邮箱归集", "📄 发票 OCR", "🔎 查验复核", "📊 对账看板", "📋 归集记录"])
+    tabs = st.tabs(["📁 本地文件夹", "📧 邮箱归集", "📄 发票 OCR", "🔎 查验复核", "🔍 查重核对", "📊 对账看板", "📋 归集记录"])
     with tabs[0]:
         _render_folder()
     with tabs[1]:
@@ -370,8 +453,10 @@ def render() -> None:
     with tabs[3]:
         _render_review()
     with tabs[4]:
-        _render_dashboard()
+        _render_reconcile()
     with tabs[5]:
+        _render_dashboard()
+    with tabs[6]:
         _render_logs()
     st.caption("导入后请到「📥 票据与流水」核对；高置信匹配可到「⚡ AI 代办」一键入账。")
     theme.disclaimer()

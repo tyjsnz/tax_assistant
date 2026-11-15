@@ -707,3 +707,13 @@ def test_recovery_tabs_render() -> None:
     assert any("完整性检查" in label for label in labels)
     assert any("历史申报补录" in label for label in labels)
     assert at.button(key="recovery_completeness_run")
+
+
+def test_invoice_reconcile_tab_renders() -> None:
+    """发票归集：查重核对标签渲染正常。"""
+    at = _new_app()
+    _goto(at, "📬 发票归集")
+    _assert_clean(at, "发票归集（查重）")
+    labels = [tab.label for tab in at.tabs]
+    assert any("查重核对" in label for label in labels)
+    assert at.button(key="collector_reconcile_check")
