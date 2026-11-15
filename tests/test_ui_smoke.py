@@ -676,3 +676,13 @@ def test_calendar_page_renders() -> None:
     labels = [tab.label for tab in at.tabs]
     assert any("先看必做" in label for label in labels)
     assert any("当月待办" in label for label in labels)
+
+
+def test_filing_social_insurance_tab_renders() -> None:
+    """申报填报：社保费 tab 与汇总按钮存在。"""
+    at = _new_app()
+    _goto(at, "📋 申报填报")
+    _assert_clean(at, "申报填报（社保）")
+    labels = [tab.label for tab in at.tabs]
+    assert any("社保费" in label for label in labels)
+    assert at.button(key="social_build")

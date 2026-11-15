@@ -126,7 +126,8 @@ def _render_task_card(item: dict[str, Any], index: int) -> None:
             st.caption(f"{item.get('label') or ''}")
         with cols[2]:
             page = _ACTION_PAGE.get(str(item.get("key")), nav.PAGE_FILING)
-            if st.button("去处理 →", key=f"cal_task_{item.get('key')}_{item.get('due_date')}", width="stretch"):
+            label = "去社保费 →" if item.get("key") == "social_insurance_monthly" else "去处理 →"
+            if st.button(label, key=f"cal_task_{item.get('key')}_{item.get('due_date')}", width="stretch"):
                 nav.goto(page)
         with st.expander("怎么做（3 步）", expanded=False):
             for step in _HOW_TO.get(str(item.get("key")), _GENERIC_HOW):

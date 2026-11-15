@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -929,6 +929,69 @@ def _render_archive_panel(period: str) -> None:
 # =============================================================================
 # 页面入口
 # =============================================================================
+def _render_social_insurance() -> None:
+    """社保费申报辅助：数据汇总、核对、导出，不代替电子税务局申报。"""
+    from filing import social_insurance
+
+    st.info(
+        "社保费通常按月申报：有员工的单位需申报单位部分，并代扣个人部分。"
+        "本页只汇总个人代扣、缴费基数和人数，便于和电子税务局/社保客户端核对；"
+        "**单位部分费率各地不同，系统不硬编码**。",
+        icon="🏦",
+    )
+    today = date.today()
+    default_month = today.strftime("%Y-%m")
+    cols = st.columns([2, 1, 2])
+    with cols[0]:
+        month = st.text_input("社保所属月份（YYYY-MM）", value=default_month, key="social_period")
+    with cols[1]:
+        st.write("")
+        if st.button("🔍 汇总社保数据", key="social_build", type="primary", width="stretch"):
+            try:
+                st.session_state["_social_bundle"] = social_insurance.build_social_insurance_worksheet(month)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"汇总失败：{exc}")
+    bundle = st.session_state.get("_social_bundle")
+    if not bundle:
+        st.caption("输入月份后点击「汇总社保数据」。")
+        st.markdown("**操作路径**")
+        st.markdown("1. 核对本月参保人数、缴费基数、人员增减；\n2. 电子税务局「社保费申报」/社保费客户端填写；\n3. 缴费并保存凭证。")
+        return
+    with st.container(border=True):
+        totals = bundle.get("totals") or {}
+        ui.metric_row(
+            [
+                {"label": "参保人数", "value": f"{totals.get('count', 0)} 人"},
+                {"label": "社保基数合计", "value": f"¥{totals.get('social_base', 0):,.2f}"},
+                {"label": "个人社保合计", "value": f"¥{totals.get('personal_social', 0):,.2f}"},
+                {"label": "个人公积金合计", "value": f"¥{totals.get('personal_housing', 0):,.2f}"},
+            ],
+            columns=4,
+        )
+        for warning in bundle.get("warnings") or []:
+            st.warning(warning)
+        st.caption(bundle.get("note") or "")
+        if bundle.get("rows"):
+            st.dataframe(pd.DataFrame(bundle["rows"]), width="stretch", hide_index=True)
+            try:
+                path = social_insurance.export_social_insurance_excel(bundle)
+                st.download_button(
+                    "⬇️ 下载社保申报辅助表 Excel",
+                    data=Path(path).read_bytes(),
+                    file_name=Path(path).name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="social_download",
+                    width="stretch",
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.warning(f"导出失败：{exc}")
+        st.markdown("**操作步骤**")
+        for index, step in enumerate(bundle.get("steps") or [], start=1):
+            st.markdown(f"{index}. {step}")
+        st.link_button("打开电子税务局", "https://etax.chinatax.gov.cn", width="stretch")
+        st.caption("本页只做辅助核对；实际申报与缴费请在电子税务局/当地社保费客户端完成。")
+
+
 def render() -> None:
     """渲染申报填报页。"""
     from ui.components import explainers
@@ -940,7 +1003,7 @@ def render() -> None:
         archived_hint = "未归档"
     ui.page_header(
         "申报填报",
-        "生成、校验、导出并跟踪季度申报表；申报数据全部来自本地台账与确定性算税引擎。",
+        "按「申报表 / 社保费 / 进度 / 归档 / 年度」分区办理，避免一屏堆满内容；申报数据全部来自本地台账。",
         icon="📋",
         right_text=(
             f"当前季度：{period_label(header_period)} · 结账：{_closure_text(header_period)} · 归档：{archived_hint}"
@@ -968,32 +1031,45 @@ def render() -> None:
 
     _render_closure_badges(period)
 
-    bundles = list(st.session_state.get(STATE_BUNDLES, {}).get(period, []) or [])
-    checks = st.session_state.get(STATE_CHECKS, {}).get(period, {}) or {}
-    if not bundles:
-        st.info(
-            "尚未生成本期间的申报表。点击「生成申报表」后，将自动汇总收入台账、费用台账、研发辅助账与合同台账，"
-            "生成增值税、企业所得税预缴、财务报表与印花税申报表。",
-            icon="📋",
-        )
-    else:
-        ui.metric_row(
-            [
-                {"label": "申报表数量", "value": f"{len(bundles)}"},
-                {"label": "校验通过", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) == 'PASS')}"},
-                {"label": "需关注", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) in {'WARNING', 'ERROR'})}"},
-            ],
-            columns=3,
-        )
-        for index, bundle in enumerate(bundles):
-            form_id = str(bundle.get("form_id"))
-            _render_bundle(bundle, checks.get(form_id) or {}, period, index)
-        _render_export(period, bundles)
-
-    _render_archive_panel(period)
-    _render_progress(period, bundles)
-    _render_guides_summary(bundles)
-    _render_annual_other_panel()
+    tabs = st.tabs([
+        "📋 申报表",
+        "🏦 社保费",
+        "📈 进度与指引",
+        "🗄️ 归档",
+        "📆 年度 / 其他",
+    ])
+    with tabs[0]:
+        bundles = list(st.session_state.get(STATE_BUNDLES, {}).get(period, []) or [])
+        checks = st.session_state.get(STATE_CHECKS, {}).get(period, {}) or {}
+        if not bundles:
+            st.info(
+                "尚未生成本期间的申报表。点击「生成申报表」后，将自动汇总收入台账、费用台账、研发辅助账与合同台账，"
+                "生成增值税、企业所得税预缴、财务报表与印花税申报表。",
+                icon="📋",
+            )
+        else:
+            ui.metric_row(
+                [
+                    {"label": "申报表数量", "value": f"{len(bundles)}"},
+                    {"label": "校验通过", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) == 'PASS')}"},
+                    {"label": "需关注", "value": f"{sum(1 for c in checks.values() if str(c.get('status')) in {'WARNING', 'ERROR'})}"},
+                ],
+                columns=3,
+            )
+            for index, bundle in enumerate(bundles):
+                form_id = str(bundle.get("form_id"))
+                _render_bundle(bundle, checks.get(form_id) or {}, period, index)
+            _render_export(period, bundles)
+    with tabs[1]:
+        _render_social_insurance()
+    with tabs[2]:
+        bundles = list(st.session_state.get(STATE_BUNDLES, {}).get(period, []) or [])
+        _render_progress(period, bundles)
+        _render_guides_summary(bundles)
+    with tabs[3]:
+        _render_archive_panel(period)
+    with tabs[4]:
+        _render_annual_other_panel()
     theme.disclaimer()
 
 
