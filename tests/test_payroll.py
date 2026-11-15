@@ -103,7 +103,8 @@ class TestEmployees:
         stored = employees.get_employee(employee["id"])
         assert stored is not None
         assert stored["id_card_masked"] == "530128****1234"
-        assert "530128199001011234" not in str(stored)
+        # v1.53 起完整身份证仅保存在本地，用于显示与导出模板
+        assert stored["id_card_full"] == "530128199001011234"
 
     def test_update_status_requires_leave_date(self):
         employee = _add_employee()
