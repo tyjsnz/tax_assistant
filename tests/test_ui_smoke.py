@@ -742,3 +742,12 @@ def test_invoice_task_actions_render() -> None:
     assert at.button(key="collector_task_post")
     assert at.button(key="collector_task_match")
     assert at.button(key="collector_task_ignore")
+
+
+def test_iit_import_tab_renders() -> None:
+    """员工与工资：导入综合所得申报表标签存在。"""
+    at = _new_app()
+    _goto(at, "👥 员工与工资")
+    _assert_clean(at, "员工与工资（导入）")
+    labels = [tab.label for tab in at.tabs]
+    assert any("导入综合所得申报表" in label for label in labels)

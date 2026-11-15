@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 import config
+from ingest import iit_import
 from ui.components import cache, formatting as F, nav, payroll_api as PA, runtime, theme, ui
 
 FLASH_KEY = "_payroll_flash"
@@ -1586,6 +1587,76 @@ def _render_disputes_section() -> None:
 # =============================================================================
 # 页面入口
 # =============================================================================
+def _render_iit_import_tab() -> None:
+    """从自然人电子税务局综合所得申报表导入员工信息。"""
+    st.caption(
+        "支持自然人电子税务局/扣缴端导出的「综合所得申报表」Excel（.xlsx/.xlsm）或 CSV。"
+        "系统只读取文件、提取人员并脱敏保存，不联网、不上传。"
+    )
+    st.info(
+        "建议路径：扣缴端 → 综合所得申报 → 申报表报送/查询 → 导出 Excel。"
+        "如果导出的是旧版 .xls，请先在 Excel/WPS 中另存为 .xlsx。",
+        icon="📄",
+    )
+    cols = st.columns([2, 2])
+    with cols[0]:
+        period = st.text_input("申报所属月份（可选）", value=PA.current_month_key(), key="iit_import_period", placeholder="2026-03")
+    with cols[1]:
+        st.caption("用于给缺失入职日期的员工补一个参考日期，可在员工档案里再改。")
+    uploaded = st.file_uploader("上传综合所得申报表", type=["xlsx", "xlsm", "csv"], key="iit_import_file")
+    if uploaded is not None and st.button("🔍 解析并预览人员", key="iit_import_parse", type="primary", width="stretch"):
+        try:
+            result = iit_import.parse_file(uploaded.getvalue(), uploaded.name)
+            st.session_state["_iit_import_preview"] = result
+            st.toast(f"识别到 {len(result['rows'])} 人")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"解析失败：{exc}")
+    preview = st.session_state.get("_iit_import_preview")
+    if not isinstance(preview, dict):
+        st.info("上传文件后点击「解析并预览人员」。")
+        return
+    rows = preview.get("rows") or []
+    ui.metric_row(
+        [
+            {"label": "识别人员", "value": f"{len(rows)} 人"},
+            {"label": "解析工作表", "value": f"{len(preview.get('sheets') or [])} 个"},
+            {"label": "原始记录", "value": f"{preview.get('raw_count', 0)} 行"},
+        ],
+        columns=3,
+    )
+    frame = pd.DataFrame([
+        {
+            "姓名": row.get("name"), "身份证号": row.get("id_card_masked") or "—",
+            "手机": row.get("phone") or "—", "入职日期": row.get("hire_date") or "—",
+            "状态": "离职" if row.get("leave_date") else "在职",
+            "本期收入": row.get("gross_salary"), "个人社保": row.get("social_insurance"),
+            "个人公积金": row.get("housing_fund"), "专项附加": row.get("special_deduction"),
+            "本期税额": row.get("tax_withheld"),
+        }
+        for row in rows
+    ])
+    st.dataframe(
+        frame, hide_index=True, alt="综合所得申报表人员预览",
+        column_config={
+            "本期收入": st.column_config.NumberColumn("本期收入", format="¥%.2f"),
+            "个人社保": st.column_config.NumberColumn("个人社保", format="¥%.2f"),
+            "个人公积金": st.column_config.NumberColumn("个人公积金", format="¥%.2f"),
+            "专项附加": st.column_config.NumberColumn("专项附加", format="¥%.2f"),
+            "本期税额": st.column_config.NumberColumn("本期税额", format="¥%.2f"),
+        },
+    )
+    st.warning("导入只创建员工档案；工资、社保、专项附加扣除仍需在「月度工资表」核对后再使用。", icon="⚠️")
+    if st.button("✅ 导入员工档案", key="iit_import_save", type="primary", width="stretch"):
+        result = iit_import.import_employees(rows, period=period)
+        st.success(f"已创建 {len(result['created'])} 人；跳过 {len(result['skipped'])} 人。")
+        if result["skipped"]:
+            st.caption("跳过：" + "；".join(f"{item['name']}（{item['reason']}）" for item in result["skipped"][:10]))
+        if result["errors"]:
+            st.warning("部分人员导入失败：" + "；".join(result["errors"][:5]))
+        st.session_state.pop("_iit_import_preview", None)
+    st.caption("身份证号只保存脱敏值（前 6 位 + **** + 后 4 位），不会写入日志原文。")
+
+
 def render() -> None:
     """渲染「👥 员工与工资」页面。"""
     ui.page_header(
@@ -1597,10 +1668,12 @@ def render() -> None:
     _show_flash()
     if not PA.any_ready():
         ui.module_missing("员工与工资", "ledger.employees / ledger.payroll / filing.iit_return", detail=PA.missing_detail())
-    tabs = st.tabs(["👥 员工管理", "💰 月度工资表", "📋 扣缴申报辅助表"])
+    tabs = st.tabs(["👥 员工管理", "💰 月度工资表", "📋 扣缴申报辅助表", "📥 导入综合所得申报表"])
     with tabs[0]:
         _render_employee_tab()
     with tabs[1]:
         _render_payroll_tab()
     with tabs[2]:
         _render_iit_return_tab()
+    with tabs[3]:
+        _render_iit_import_tab()
