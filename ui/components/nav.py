@@ -13,6 +13,7 @@ import streamlit as st
 
 PAGE_DASHBOARD = "🏠 首页驾驶舱"
 PAGE_ONBOARDING = "🚀 新手引导"
+PAGE_CALENDAR = "🗓️ 报税日历"
 PAGE_LEDGER = "📒 台账管理"
 PAGE_PAYROLL = "👥 员工与工资"
 PAGE_CORRECTION = "🧯 离职与纠错"
@@ -33,6 +34,7 @@ PAGE_SETTINGS = "⚙️ 设置"
 PAGES: list[tuple[str, str]] = [
     (PAGE_DASHBOARD, "ui.views.dashboard"),
     (PAGE_ONBOARDING, "ui.views.onboarding"),
+    (PAGE_CALENDAR, "ui.views.tax_calendar"),
     (PAGE_LEDGER, "ui.views.ledger"),
     (PAGE_PAYROLL, "ui.views.payroll"),
     (PAGE_CORRECTION, "ui.views.correction"),
@@ -52,7 +54,7 @@ PAGES: list[tuple[str, str]] = [
 
 #: 侧边栏分组（按重要程度/使用频率）
 NAV_GROUPS: list[tuple[str, list[str]]] = [
-    ("开始", [PAGE_DASHBOARD, PAGE_ONBOARDING]),
+    ("开始", [PAGE_DASHBOARD, PAGE_CALENDAR, PAGE_ONBOARDING]),
     ("日常记账", [PAGE_LEDGER, PAGE_INGEST, PAGE_COLLECTOR, PAGE_INVOICE]),
     ("每月 / 每季必做", [PAGE_AUTOMATION, PAGE_PAYROLL, PAGE_FILING, PAGE_CHECK]),
     ("季度 / 年度", [PAGE_CALCULATOR, PAGE_SETTLEMENT]),
