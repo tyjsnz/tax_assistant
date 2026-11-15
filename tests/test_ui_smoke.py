@@ -696,3 +696,14 @@ def test_recovery_page_renders() -> None:
     _assert_clean(at, "资料找回")
     assert at.checkbox(key="recovery_step_1")
     assert at.checkbox(key="recovery_step_5")
+
+
+def test_recovery_tabs_render() -> None:
+    """资料找回：找回步骤 / 完整性检查 / 历史申报补录三个标签。"""
+    at = _new_app()
+    _goto(at, "🆘 资料找回")
+    _assert_clean(at, "资料找回（标签）")
+    labels = [tab.label for tab in at.tabs]
+    assert any("完整性检查" in label for label in labels)
+    assert any("历史申报补录" in label for label in labels)
+    assert at.button(key="recovery_completeness_run")

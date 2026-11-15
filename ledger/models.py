@@ -649,6 +649,23 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("created_at", "str", "创建时间"),
         ],
     },
+    # 资料找回：历史申报补录（v1.38，本地清单）
+    "recovery_filings": {
+        "file": "recovery_filings.csv",
+        "prefix": "RF",
+        "label": "历史申报补录",
+        "columns": [
+            _col("id", "id", "编号"),
+            _col("period", "str", "所属期"),
+            _col("tax_type", "str", "税种"),
+            _col("filed_date", "str", "申报日期"),
+            _col("tax_amount", "money", "税额"),
+            _col("status", "str", "状态"),
+            _col("note", "str", "备注"),
+            _col("source", "str", "来源"),
+            _col("created_at", "str", "创建时间"),
+        ],
+    },
     # 会计期间（月结/季结状态机，P0-3）
     "periods": {
         "file": "periods.csv",
