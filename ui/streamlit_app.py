@@ -207,6 +207,12 @@ def main() -> None:
         except Exception:  # noqa: BLE001 - 自动归集失败不影响使用
             pass
     page = _render_sidebar()
+    try:
+        from ui.components import update_notify
+
+        update_notify.render()
+    except Exception:  # noqa: BLE001 - 更新检查失败不影响页面
+        pass
     _render_page(page)
     try:
         from ui.components import branding
