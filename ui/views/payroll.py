@@ -766,6 +766,23 @@ def _render_confirm_result(period: str) -> None:
         st.caption("工资计提与发放代扣凭证已生成；凭证号可在工资表「凭证号」列核对。")
 
 
+def _open_file_location(path: Path) -> None:
+    """在 Finder/Explorer/文件管理器中显示文件；失败时静默提示。"""
+    import platform
+    import subprocess
+
+    try:
+        system = platform.system().lower()
+        if system == "darwin":
+            subprocess.Popen(["open", "-R", str(path)])
+        elif system == "windows":
+            subprocess.Popen(["explorer", "/select,", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path.parent)])
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"无法自动打开文件夹，请手动到：{path}")
+
+
 def _fill_from_previous(period: str) -> None:
     try:
         result = PA.fill_from_previous(period)
@@ -933,14 +950,30 @@ def _render_payroll_tab() -> None:
                     st.warning(warning)
                 path = Path(result["path"])
                 if path.exists():
-                    st.download_button(
-                        "⬇️ 下载正常工资薪金所得.xls",
-                        data=path.read_bytes(),
-                        file_name=f"正常工资薪金所得_{period}.xls",
-                        mime="application/vnd.ms-excel",
-                        key="payroll_template_download",
-                        width="stretch",
-                    )
+                    st.caption(f"文件已生成：{path}")
+                    if config.FROZEN:
+                        # 桌面版原生窗口对浏览器下载支持不稳定，改为直接保存到桌面/打开文件夹
+                        save_cols = st.columns(2)
+                        with save_cols[0]:
+                            if st.button("💾 保存到桌面", key="payroll_template_save_desktop", type="primary", width="stretch"):
+                                try:
+                                    target = payroll_template.save_copy_to_desktop(path, filename=f"正常工资薪金所得_{period}.xls")
+                                    st.success(f"已保存到：{target}")
+                                except Exception as exc:  # noqa: BLE001
+                                    st.error(f"保存失败：{exc}")
+                        with save_cols[1]:
+                            if st.button("📂 打开导出文件夹", key="payroll_template_open_folder", width="stretch"):
+                                _open_file_location(path)
+                        st.caption("桌面版请用「保存到桌面」；保存后到桌面找「正常工资薪金所得.xls」，再到扣缴端导入。")
+                    else:
+                        st.download_button(
+                            "⬇️ 下载正常工资薪金所得.xls",
+                            data=path.read_bytes(),
+                            file_name=f"正常工资薪金所得_{period}.xls",
+                            mime="application/vnd.ms-excel",
+                            key="payroll_template_download",
+                            width="stretch",
+                        )
                 st.caption("累计专项附加扣除分项目前导出为 0；如本月有专项附加，请在模板中按员工补齐。")
 
     _render_confirm_result(period)

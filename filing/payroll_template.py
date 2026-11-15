@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -102,4 +103,16 @@ def export_xls(period: str, id_cards: dict[str, str] | None = None, path: str | 
     return {**bundle, "path": str(target), "period": period}
 
 
-__all__ = ["TEMPLATE_PATH", "COLUMNS", "build_rows", "export_xls"]
+def save_copy_to_desktop(path: str | Path, *, filename: str = "") -> Path:
+    """把导出的模板复制到用户桌面，方便桌面版用户直接找到文件。"""
+    source = Path(path)
+    if not source.exists():
+        raise FileNotFoundError(f"文件不存在：{source}")
+    desktop = Path.home() / "Desktop"
+    desktop.mkdir(parents=True, exist_ok=True)
+    target = desktop / (filename or source.name)
+    shutil.copy2(source, target)
+    return target
+
+
+__all__ = ["TEMPLATE_PATH", "COLUMNS", "build_rows", "export_xls", "save_copy_to_desktop"]
