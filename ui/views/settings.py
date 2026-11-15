@@ -10,6 +10,7 @@ import streamlit as st
 
 import config
 import ledger
+from ui.components import downloads
 from ui.components import archive_api as AA, cache, company_api, formatting as F, ledger_api as LA, runtime, theme, ui
 
 FLASH_KEY = "_settings_flash"
@@ -515,7 +516,7 @@ def _render_backup_result(result: dict) -> None:
                 width="stretch",
             )
         if path and path.exists():
-            st.download_button(
+            downloads.download_or_save(
                 "⬇️ 下载备份 zip",
                 data=path.read_bytes(),
                 file_name=path.name,
@@ -1011,7 +1012,7 @@ def _render_handover_section() -> None:
         st.caption(f"生成路径：{path}")
         st.caption(f"SHA-256：{result.get('sha256')}")
         if path.exists():
-            st.download_button(
+            downloads.download_or_save(
                 "⬇️ 下载公司交接包",
                 data=path.read_bytes(),
                 file_name=path.name,
@@ -1024,7 +1025,7 @@ def _render_handover_section() -> None:
         if receipt:
             receipt_path = Path(receipt)
             if receipt_path.exists():
-                st.download_button(
+                downloads.download_or_save(
                     "⬇️ 下载交接签收单 PDF",
                     data=receipt_path.read_bytes(),
                     file_name=receipt_path.name,

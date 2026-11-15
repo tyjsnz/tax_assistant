@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from ingest import collector, invoice_reconcile, invoice_tasks, matcher
+from ui.components import downloads
 from ui.components import nav, theme, ui
 
 
@@ -386,7 +387,7 @@ def _render_reconcile() -> None:
             frame, hide_index=True, alt="发票池查重与入账核对结果",
             column_config={"价税合计": st.column_config.NumberColumn("价税合计", format="¥%.2f")},
         )
-        st.download_button(
+        downloads.download_or_save(
             "⬇️ 下载核对结果 CSV",
             data=frame.to_csv(index=False).encode("utf-8-sig"),
             file_name="发票查重核对.csv",
@@ -421,7 +422,7 @@ def _render_reconcile() -> None:
                 task_frame, hide_index=True, alt="待生成凭证的发票任务清单",
                 column_config={"价税合计": st.column_config.NumberColumn("价税合计", format="¥%.2f")},
             )
-            st.download_button(
+            downloads.download_or_save(
                 "⬇️ 下载待办任务 CSV",
                 data=invoice_reconcile.export_tasks_csv(active_tasks),
                 file_name="发票待入账任务.csv",

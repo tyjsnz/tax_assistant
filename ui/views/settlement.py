@@ -12,6 +12,7 @@ from typing import Any, Sequence
 import pandas as pd
 import streamlit as st
 
+from ui.components import downloads
 from ui.components import cache, formatting as F, settlement_api as SA, theme, ui
 
 FLASH_KEY = "_settlement_flash"
@@ -1002,7 +1003,7 @@ def _render_annual_return_tab(year: str) -> None:
     export_path = st.session_state.get(STATE_EXPORT)
     if export_path and Path(str(export_path)).exists():
         path = Path(str(export_path))
-        st.download_button(
+        downloads.download_or_save(
             "⬇️ 下载年度汇算辅助表 Excel",
             data=path.read_bytes(),
             file_name=path.name,

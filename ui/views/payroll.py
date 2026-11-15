@@ -16,6 +16,7 @@ import streamlit as st
 import config
 from filing import payroll_template
 from ingest import iit_import
+from ui.components import downloads
 from ui.components import cache, formatting as F, nav, payroll_api as PA, runtime, theme, ui
 
 FLASH_KEY = "_payroll_flash"
@@ -966,7 +967,7 @@ def _render_payroll_tab() -> None:
                                 _open_file_location(path)
                         st.caption("桌面版请用「保存到桌面」；保存后到桌面找「正常工资薪金所得.xls」，再到扣缴端导入。")
                     else:
-                        st.download_button(
+                        downloads.download_or_save(
                             "⬇️ 下载正常工资薪金所得.xls",
                             data=path.read_bytes(),
                             file_name=f"正常工资薪金所得_{period}.xls",
@@ -1230,7 +1231,7 @@ def _render_iit_return_tab() -> None:
                     _open_file_location(export_path)
             st.caption("桌面版请用「保存辅助表到桌面」，再到桌面找到 Excel。")
         else:
-            st.download_button(
+            downloads.download_or_save(
                 "⬇️ 下载扣缴申报辅助表 Excel",
                 data=export_path.read_bytes(),
                 file_name=export_path.name,
@@ -1501,7 +1502,7 @@ def _render_correction_scan_section() -> None:
         with download_cols[0]:
             try:
                 path = corrections.export_correction_plan(plan)
-                st.download_button(
+                downloads.download_or_save(
                     "📊 导出《更正操作单》Excel",
                     data=Path(path).read_bytes(),
                     file_name=Path(path).name,
@@ -1514,7 +1515,7 @@ def _render_correction_scan_section() -> None:
         with download_cols[1]:
             try:
                 pdf_path = corrections.export_correction_plan_pdf(plan)
-                st.download_button(
+                downloads.download_or_save(
                     "📄 导出 PDF 操作单（可打印）",
                     data=Path(pdf_path).read_bytes(),
                     file_name=Path(pdf_path).name,
@@ -1655,7 +1656,7 @@ def _render_disputes_section() -> None:
     with export_cols[0]:
         try:
             export_path = corrections.export_disputes_excel(disputes)
-            st.download_button(
+            downloads.download_or_save(
                 "📊 导出筛选结果 Excel",
                 data=Path(export_path).read_bytes(),
                 file_name=Path(export_path).name,

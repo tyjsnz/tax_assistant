@@ -9,6 +9,7 @@ import streamlit as st
 
 from engine import current_quarter, deadline_status, format_date_cn, next_deadline, reminders
 from ledger.models import mask_client
+from ui.components import downloads
 from ui.components import archive_api as AA, cache, charts, formatting as F, ledger_api, nav, payroll_api as PA, theme, ui
 
 
@@ -535,7 +536,7 @@ def _render_todo_card() -> None:
         with head_cols[1]:
             try:
                 ics = build_ics(deadlines)
-                st.download_button(
+                downloads.download_or_save(
                     "📅 导出到手机日历",
                     data=ics.encode("utf-8"),
                     file_name="智小税_申报日历.ics",

@@ -16,6 +16,7 @@ import streamlit as st
 import config
 from engine import calc_stamp_tax, current_quarter, period_label
 from ledger.models import derive_exclusive
+from ui.components import downloads
 from ui.components import cache, charts, formatting as F, ledger_api as LA, ui
 
 # =============================================================================
@@ -303,7 +304,7 @@ def _csv_tools(
             stored = st.session_state.get(f"{kind}_export")
             if stored and Path(stored).exists():
                 export_path = Path(stored)
-                st.download_button(
+                downloads.download_or_save(
                     "下载 CSV",
                     data=export_path.read_bytes(),
                     file_name=export_path.name,

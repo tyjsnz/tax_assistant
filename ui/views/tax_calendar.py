@@ -12,6 +12,7 @@ import config
 from engine.calendar_export import build_ics
 from engine.calendar_profile import SCOPE_KEYS, filter_deadlines, load_profile, save_profile, scope_text
 from engine.tax_calendar import deadline_status, filing_deadlines
+from ui.components import downloads
 from ui.components import nav, theme, ui
 
 _MONTHLY_KEYS = {"personal_tax_monthly", "social_insurance_monthly"}
@@ -192,7 +193,7 @@ def _render_month_view(year: int, profile: dict[str, Any] | None = None) -> None
     for index, item in enumerate(items):
         _render_task_card(item, index)
     if items:
-        st.download_button(
+        downloads.download_or_save(
             "📅 导出本月日历",
             data=build_ics(items).encode("utf-8"),
             file_name=f"智小税_申报日历_{year}年{month}月.ics",
@@ -219,7 +220,7 @@ def _render_year_view(year: int, profile: dict[str, Any] | None = None) -> None:
             }
         )
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
-    st.download_button(
+    downloads.download_or_save(
         "📅 导出全年日历 (.ics)",
         data=build_ics(items).encode("utf-8"),
         file_name=f"智小税_申报日历_{year}.ics",

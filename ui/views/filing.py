@@ -21,6 +21,7 @@ import streamlit as st
 import config
 import ledger
 from engine import completion_checklist, current_quarter, format_date_cn, period_label, quarter_options
+from ui.components import downloads
 from ui.components import archive_api as AA, cache, formatting as F, runtime, theme, ui
 
 FLASH_KEY = "_filing_flash"
@@ -443,7 +444,7 @@ def _render_export(period: str, bundles: Sequence[dict]) -> None:
         with download_cols[0]:
             if excel_path and Path(excel_path).exists():
                 file_path = Path(excel_path)
-                st.download_button(
+                downloads.download_or_save(
                     "⬇️ 下载 Excel 申报包",
                     data=file_path.read_bytes(),
                     file_name=file_path.name,
@@ -454,7 +455,7 @@ def _render_export(period: str, bundles: Sequence[dict]) -> None:
         with download_cols[1]:
             if checklist_path and Path(checklist_path).exists():
                 file_path = Path(checklist_path)
-                st.download_button(
+                downloads.download_or_save(
                     "⬇️ 下载核对清单",
                     data=file_path.read_bytes(),
                     file_name=file_path.name,
@@ -823,7 +824,7 @@ def _render_archive_result(result: dict) -> None:
                 path = Path(str(item.get("path") or ""))
                 if not path.exists():
                     continue
-                st.download_button(
+                downloads.download_or_save(
                     f"⬇️ 下载 {path.name}",
                     data=path.read_bytes(),
                     file_name=path.name,
@@ -1021,7 +1022,7 @@ def _render_social_insurance() -> None:
             st.dataframe(pd.DataFrame(bundle["rows"]), width="stretch", hide_index=True)
             try:
                 path = social_insurance.export_social_insurance_excel(bundle)
-                st.download_button(
+                downloads.download_or_save(
                     "⬇️ 下载社保申报辅助表 Excel",
                     data=Path(path).read_bytes(),
                     file_name=Path(path).name,
@@ -1184,7 +1185,7 @@ def _render_annual_other_panel() -> None:
                         st.markdown(f"{index}. {step}")
                 try:
                     path = annual_report.export_annual_report_excel(bundle)
-                    st.download_button(
+                    downloads.download_or_save(
                         "📊 导出工商年报数据准备 Excel",
                         data=Path(path).read_bytes(),
                         file_name=Path(path).name,
@@ -1250,7 +1251,7 @@ def _render_annual_other_panel() -> None:
                         st.markdown(f"{index}. {step}")
                 try:
                     path = disability_fund.export_disability_fund_excel(fund_bundle)
-                    st.download_button(
+                    downloads.download_or_save(
                         "📊 导出残保金测算 Excel",
                         data=Path(path).read_bytes(),
                         file_name=Path(path).name,

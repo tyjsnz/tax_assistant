@@ -13,6 +13,7 @@ import streamlit as st
 
 import config
 from guidebooks import content
+from ui.components import downloads
 from ui.components import nav, theme, ui
 
 _CSS = """
@@ -148,7 +149,7 @@ def _render_workflow(workflow: dict) -> None:
                     st.error(f"生成 PDF 失败：{exc}")
         pdf_path = st.session_state.get(f"_guide_pdf_path_{workflow_id}")
         if pdf_path and Path(pdf_path).exists():
-            st.download_button(
+            downloads.download_or_save(
                 "⬇️ 下载操作指引 PDF",
                 data=Path(pdf_path).read_bytes(),
                 file_name=Path(pdf_path).name,

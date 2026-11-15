@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from recovery import checklist, history
+from ui.components import downloads
 from ui.components import company_api, nav, theme, ui
 
 
@@ -69,7 +70,7 @@ def _render_steps(company_id: str, company: dict) -> None:
     done = sum(1 for item in steps if item)
     if done == checklist.TOTAL_STEPS:
         st.success("找回与重建步骤已全部勾选。建议到「设置 → 数据管理」创建备份，并以后每月备份一次。")
-    st.download_button(
+    downloads.download_or_save(
         "⬇️ 下载资料找回清单（Markdown）",
         data=_checklist_markdown().encode("utf-8"),
         file_name="税小智_资料找回清单.md",
@@ -183,7 +184,7 @@ def _render_history() -> None:
 
     cols = st.columns(2)
     with cols[0]:
-        st.download_button(
+        downloads.download_or_save(
             "⬇️ 下载补录模板 CSV",
             data=history.export_template(),
             file_name="历史申报补录模板.csv",
