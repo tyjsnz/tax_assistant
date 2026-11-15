@@ -384,6 +384,72 @@ def confirm_match(match_id: str, *, post_journal: bool = True) -> dict[str, Any]
     }
 
 
+def post_invoice_direct(invoice_id: str, *, note: str = "") -> dict[str, Any]:
+    """不依赖银行流水，直接把一张未入账发票生成台账与凭证。
+
+    用于「发票查重核对 → 待生成凭证任务」里的直接处理；
+    已入账、已有台账记录、信息冲突的发票会被拒绝，避免重复。
+    """
+    invoice_table = table(INVOICE_TABLE)
+    invoice = invoice_table.get(str(invoice_id))
+    if invoice is None:
+        raise KeyError(f"发票不存在：{invoice_id}")
+    if str(invoice.get("status")) == "已入账":
+        raise ValueError("该发票已经是「已入账」状态，请勿重复生成凭证。")
+    invoice_no = _first_text(invoice.get("invoice_no"))
+    if invoice_no:
+        if any(str(row.get("invoice_no")) == invoice_no for row in table("income").read()):
+            raise ValueError(f"收入台账已有发票号码 {invoice_no}，请勿重复入账。")
+        if any(str(row.get("receipt_no")) == invoice_no for row in table("expense").read()):
+            raise ValueError(f"费用台账已有凭证号 {invoice_no}，请勿重复入账。")
+
+    entry_date = _first_text(invoice.get("invoice_date"))
+    ensure_open(entry_date, action="发票直接入账")
+    description = _invoice_description(invoice, {})
+    total = round2(invoice.get("total_inclusive"))
+    direction = str(invoice.get("direction") or "")
+    if direction == "销项":
+        record = income_ledger.add_income(
+            entry_date,
+            _first_text(invoice.get("buyer")),
+            total,
+            invoice_type="专票" if str(invoice.get("invoice_type")) == "专票" else "普票",
+            category=_guess_income_category(description),
+            description=description,
+            invoice_no=invoice_no,
+            note="发票查重任务直接入账",
+        )
+        entry = journal.build_income_entry(record)
+        kind = "收入"
+    elif direction == "进项":
+        record = expense_ledger.add_expense(
+            entry_date,
+            description,
+            total,
+            category=_guess_expense_category(description),
+            is_rd_related=False,
+            vendor=_first_text(invoice.get("seller")),
+            receipt_no=invoice_no,
+            note="进项发票直接入账（小规模不抵扣）",
+        )
+        entry = journal.build_expense_entry(record)
+        kind = "费用"
+    else:
+        raise ValueError(f"发票方向「{direction or '未知'}」无法识别，不能直接入账。")
+
+    posted = _posted_journal(entry)
+    updated = invoice_table.update(str(invoice_id), {
+        "status": "已入账",
+        "note": (str(invoice.get("note") or "") + "；" + (note or "查重任务直接入账")).strip("；"),
+    })
+    log_user_action(
+        "发票直接入账",
+        f"发票 {invoice_no or '—'}，{kind}台账 {record.get('id') or '—'}，金额 {total:.2f} 元，"
+        f"凭证 {(posted or {}).get('entry_no') or '（未记账）'}",
+    )
+    return {"ok": True, "invoice": updated, "ledger": {"kind": kind, "record": record}, "journal": posted}
+
+
 def ignore_match(match_id: str) -> dict[str, Any]:
     """忽略一条匹配建议（不修改发票/流水状态），写审计日志。"""
     match_table = table(MATCH_TABLE)

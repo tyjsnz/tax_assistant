@@ -142,6 +142,7 @@ def build_tasks(recon: dict[str, Any] | None = None) -> list[dict[str, Any]]:
             action = "到「票据与流水」生成入账凭证"
         tasks.append({
             "invoice_id": row.get("id"),
+            "identity": identity,
             "invoice_no": row.get("invoice_no") or identity,
             "invoice_date": row.get("invoice_date"),
             "direction": row.get("direction"),

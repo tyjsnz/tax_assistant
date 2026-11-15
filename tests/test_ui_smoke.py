@@ -726,3 +726,19 @@ def test_invoice_tasks_section_renders() -> None:
     _assert_clean(at, "发票归集（待办）")
     texts = "\n".join(str(item.value) for item in at.markdown)
     assert "待生成凭证任务" in texts
+
+
+def test_invoice_task_actions_render() -> None:
+    """发票归集：有待办时显示直接生成凭证/自动匹配/忽略按钮。"""
+    from ledger import store
+
+    store.table("invoices").append({
+        "invoice_no": "UITASK001", "invoice_date": "2026-05-01", "direction": "销项",
+        "seller": "测试", "buyer": "客户", "total_inclusive": 100, "invoice_type": "普票", "status": "待匹配",
+    })
+    at = _new_app()
+    _goto(at, "📬 发票归集")
+    _assert_clean(at, "发票归集（待办动作）")
+    assert at.button(key="collector_task_post")
+    assert at.button(key="collector_task_match")
+    assert at.button(key="collector_task_ignore")

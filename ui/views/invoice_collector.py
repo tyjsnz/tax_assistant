@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from ingest import collector, invoice_reconcile
+from ingest import collector, invoice_reconcile, invoice_tasks, matcher
 from ui.components import nav, theme, ui
 
 
@@ -399,11 +399,15 @@ def _render_reconcile() -> None:
     with st.container(border=True):
         st.markdown("**🧾 待生成凭证任务**")
         st.caption("把未入账/重复/冲突发票自动转成待办；已入账发票不会出现在这里。")
-        cols = st.columns(3)
-        cols[0].metric("待处理任务", len(tasks))
-        cols[1].metric("未入账", sum(1 for task in tasks if task.get("verdict") == "未入账"))
-        cols[2].metric("重复/冲突", sum(1 for task in tasks if task.get("verdict") in {"重复录入", "信息冲突"}))
-        if tasks:
+        ignored = invoice_tasks.ignored_keys()
+        active_tasks = [task for task in tasks if str(task.get("identity")) not in ignored]
+        ignored_tasks = [task for task in tasks if str(task.get("identity")) in ignored]
+        cols = st.columns(4)
+        cols[0].metric("待处理任务", len(active_tasks))
+        cols[1].metric("未入账", sum(1 for task in active_tasks if task.get("verdict") == "未入账"))
+        cols[2].metric("重复/冲突", sum(1 for task in active_tasks if task.get("verdict") in {"重复录入", "信息冲突"}))
+        cols[3].metric("已忽略", len(ignored_tasks))
+        if active_tasks:
             task_frame = pd.DataFrame([
                 {
                     "发票号码": task.get("invoice_no"), "开票日期": task.get("invoice_date"),
@@ -411,7 +415,7 @@ def _render_reconcile() -> None:
                     "价税合计": task.get("total_inclusive"), "判断": task.get("verdict"),
                     "处理建议": task.get("action"),
                 }
-                for task in tasks
+                for task in active_tasks
             ])
             st.dataframe(
                 task_frame, hide_index=True, alt="待生成凭证的发票任务清单",
@@ -419,16 +423,61 @@ def _render_reconcile() -> None:
             )
             st.download_button(
                 "⬇️ 下载待办任务 CSV",
-                data=invoice_reconcile.export_tasks_csv(tasks),
+                data=invoice_reconcile.export_tasks_csv(active_tasks),
                 file_name="发票待入账任务.csv",
                 mime="text/csv",
                 key="collector_tasks_download",
                 width="stretch",
             )
-            if st.button("去「票据与流水」处理这些发票", key="collector_tasks_goto", type="primary", width="stretch"):
-                nav.goto(nav.PAGE_INGEST)
+            labels = {
+                f"{task.get('invoice_no')} · {task.get('verdict')} · ¥{float(task.get('total_inclusive') or 0):,.2f}": task
+                for task in active_tasks
+            }
+            selected_label = st.selectbox("选择一条任务", list(labels), key="collector_task_select")
+            selected_task = labels[selected_label]
+            action_cols = st.columns(3)
+            with action_cols[0]:
+                if st.button(
+                    "✅ 直接生成凭证", key="collector_task_post", type="primary", width="stretch",
+                    disabled=selected_task.get("verdict") != "未入账",
+                    help="把这张未入账发票直接生成收入/费用台账与凭证；重复/冲突任务请先处理。",
+                ):
+                    try:
+                        result = matcher.post_invoice_direct(str(selected_task.get("invoice_id")))
+                        st.success(f"已生成 {result['ledger']['kind']}台账 {result['ledger']['record'].get('id')}，发票号码 {selected_task.get('invoice_no')}。")
+                        st.rerun()
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"生成失败：{exc}")
+            with action_cols[1]:
+                if st.button(
+                    "🔗 自动匹配银行流水", key="collector_task_match", width="stretch",
+                    help="用现有发票与银行流水按方向/金额/日期/对方名称自动评分，生成匹配建议。",
+                ):
+                    try:
+                        result = matcher.suggest_matches()
+                        st.success(f"已生成 {result.get('count', 0)} 条匹配建议。可到「票据与流水」确认入账。")
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"匹配失败：{exc}")
+            with action_cols[2]:
+                if st.button("🚫 忽略任务", key="collector_task_ignore", width="stretch"):
+                    invoice_tasks.ignore(str(selected_task.get("identity")), note=str(selected_task.get("verdict")))
+                    st.toast("已忽略，可在下方恢复")
+                    st.rerun()
+        elif tasks:
+            st.info("当前任务都已忽略。可在下方「已忽略任务」恢复。")
         else:
             st.success("没有待处理的发票：当前发票都已入账，或还没有导入发票。")
+
+        if ignored_tasks:
+            with st.expander(f"已忽略任务（{len(ignored_tasks)}）", expanded=False):
+                for task in ignored_tasks:
+                    cols = st.columns([5, 2])
+                    with cols[0]:
+                        st.caption(f"{task.get('invoice_no')} · {task.get('verdict')} · ¥{float(task.get('total_inclusive') or 0):,.2f}")
+                    with cols[1]:
+                        if st.button("恢复", key=f"collector_task_restore_{task.get('identity')}", width="stretch"):
+                            invoice_tasks.restore(str(task.get("identity")))
+                            st.rerun()
 
     with st.container(border=True):
         st.markdown("**查一张发票**")
