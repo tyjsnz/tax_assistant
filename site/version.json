@@ -1,11 +1,11 @@
 {
-  "version": "1.46.0",
+  "version": "1.47.0",
   "released_at": "2026-11-15",
   "notes": "启动时检查更新、提示下载；数据保存在用户目录，升级不覆盖账套。",
   "downloads": {
     "home": "https://tax.flacn.net/",
     "macos": "https://tax.flacn.net/download/zhixiaoshui-macos-desktop.zip",
     "windows": "https://github.com/tyjsnz/tax_assistant/releases/download/v1.36.0/zhixiaoshui-windows-desktop.zip",
-    "source": "https://tax.flacn.net/download/zhixiaoshui-v1.46.0.zip"
+    "source": "https://tax.flacn.net/download/zhixiaoshui-v1.47.0.zip"
   }
 }

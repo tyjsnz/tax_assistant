@@ -881,7 +881,9 @@ def _render_payroll_tab() -> None:
             if st.button("🗑️ 删除本期工资凭证", key="payroll_delete_entries", width="stretch", disabled=not confirm_delete):
                 _delete_payroll_entries(period)
 
-    with st.expander("📤 导出扣缴端申报模板（正常工资薪金所得.xls）", expanded=False):
+    previous_export = st.session_state.get("_payroll_template_result")
+    export_open = bool(isinstance(previous_export, dict) and previous_export.get("period") == period)
+    with st.expander("📤 导出扣缴端申报模板（正常工资薪金所得.xls）", expanded=export_open):
         st.caption(
             "以税务局下载的空白模板为底稿，填入本期工资；导出后可直接在自然人电子税务局扣缴端导入。"
             "系统只保存脱敏身份证，因此完整证件号码需要在这里临时填写，仅用于本次导出，不落库。"
@@ -922,6 +924,7 @@ def _render_payroll_tab() -> None:
                 try:
                     result = payroll_template.export_xls(period, id_cards=id_cards)
                     st.session_state["_payroll_template_result"] = result
+                    st.success(f"已生成模板：{result.get('count', 0)} 人，可下载后在扣缴端导入。")
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"导出失败：{exc}")
             result = st.session_state.get("_payroll_template_result")

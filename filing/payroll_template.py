@@ -99,7 +99,7 @@ def export_xls(period: str, id_cards: dict[str, str] | None = None, path: str | 
             if col is not None:
                 sheet.write(row_index, col, value)
     writable.save(str(target))
-    return {**bundle, "path": str(target)}
+    return {**bundle, "path": str(target), "period": period}
 
 
 __all__ = ["TEMPLATE_PATH", "COLUMNS", "build_rows", "export_xls"]
