@@ -27,6 +27,7 @@ PAGE_SETTLEMENT = "📊 汇算清缴"
 PAGE_CHECK = "🔍 申报核对"
 PAGE_GUIDE = "📖 操作指引"
 PAGE_RECOVERY = "🆘 资料找回"
+PAGE_ARCHIVE_CENTER = "🗂️ 资料中心"
 PAGE_POLICIES = "📚 政策知识库"
 PAGE_ASSISTANT = "🤖 AI 助手"
 PAGE_SETTINGS = "⚙️ 设置"
@@ -49,6 +50,7 @@ PAGES: list[tuple[str, str]] = [
     (PAGE_CHECK, "ui.views.check"),
     (PAGE_GUIDE, "ui.views.guides"),
     (PAGE_RECOVERY, "ui.views.recovery"),
+    (PAGE_ARCHIVE_CENTER, "ui.views.archive_center"),
     (PAGE_POLICIES, "ui.views.policies"),
     (PAGE_ASSISTANT, "ui.views.assistant"),
     (PAGE_SETTINGS, "ui.views.settings"),
@@ -61,7 +63,7 @@ NAV_GROUPS: list[tuple[str, list[str]]] = [
     ("每月 / 每季必做", [PAGE_AUTOMATION, PAGE_PAYROLL, PAGE_FILING, PAGE_CHECK]),
     ("季度 / 年度", [PAGE_CALCULATOR, PAGE_SETTLEMENT]),
     ("异常处理", [PAGE_CORRECTION]),
-    ("学习与帮助", [PAGE_GUIDE, PAGE_RECOVERY, PAGE_POLICIES, PAGE_ASSISTANT]),
+    ("学习与帮助", [PAGE_GUIDE, PAGE_RECOVERY, PAGE_ARCHIVE_CENTER, PAGE_POLICIES, PAGE_ASSISTANT]),
     ("系统", [PAGE_SETTINGS]),
 ]
 

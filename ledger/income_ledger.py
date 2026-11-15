@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import config
+from storage.export_paths import export_file
 from engine.money import round2
 from engine.tax_calendar import period_range
 from ledger import locks, models
@@ -121,7 +122,7 @@ def _invoice_bucket_empty() -> dict[str, dict[str, float | int]]:
 
 def _export_default_path(prefix: str) -> Path:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path(config.EXPORT_DIR) / f"{prefix}_{stamp}.csv"
+    return export_file(prefix, "csv", category="报表台账")
 
 
 # =============================================================================

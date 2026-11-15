@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import config
+from storage.export_paths import export_file
 from engine.money import round2
 from engine.tax_calendar import period_range
 from ledger import locks, models
@@ -92,7 +93,7 @@ def _sort_by_date_asc(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _export_default_path(prefix: str) -> Path:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path(config.EXPORT_DIR) / f"{prefix}_{stamp}.csv"
+    return export_file(prefix, "csv", category="报表台账")
 
 
 def _extract_aliases(raw: dict[str, Any]) -> dict[str, Any]:

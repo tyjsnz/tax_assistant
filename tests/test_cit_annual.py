@@ -315,7 +315,8 @@ class TestExport:
         bundle = cit_annual.build_cit_annual_return("2026")
         path = cit_annual.export_cit_annual_excel(bundle)
         assert isinstance(path, Path) and path.exists()
-        assert path.parent == Path(config.EXPORT_DIR)
+        assert Path(config.EXPORT_DIR) in path.parents
+        assert "2026" in path.parts and "年度" in path.parts and "01_申报表" in path.parts
         workbook = load_workbook(path)
         assert workbook.sheetnames == ["主表", "纳税调整明细", "亏损弥补明细", "政策依据与操作步骤"]
         assert workbook["主表"]["A1"].value == cit_annual.FORM_NAME

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from storage.export_paths import export_file
 from engine.payroll_correction import calc_correction_plan, correction_periods
 from engine.money import round2, yuan
 from ledger import employees, payroll, store
@@ -144,7 +145,7 @@ def export_correction_plan(plan: dict[str, Any], path: str | Path | None = None)
     from openpyxl import Workbook
 
     employee_name = str(plan.get("employee_name") or "员工")
-    target = Path(path) if path else Path(config.EXPORT_DIR) / f"离职多申报更正操作单_{employee_name}.xlsx"
+    target = Path(path) if path else export_file(f"离职多申报更正操作单_{employee_name}", "xlsx", category="工资个税")
     target.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook()
     ws = wb.active
@@ -254,7 +255,7 @@ def export_disputes_excel(rows: list[dict[str, Any]] | None = None, path: str | 
     from openpyxl import Workbook
 
     items = rows if rows is not None else list_disputes()
-    target = Path(path) if path else Path(config.EXPORT_DIR) / f"个税异议申诉台账_{config.today().isoformat()}.xlsx"
+    target = Path(path) if path else export_file(f"个税异议申诉台账_{config.today().isoformat()}", "xlsx", category="工资个税")
     target.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook()
     ws = wb.active
@@ -356,7 +357,7 @@ def export_correction_plan_pdf(plan: dict[str, Any], path: str | Path | None = N
         font_name = "Helvetica"
 
     employee_name = str(plan.get("employee_name") or "员工")
-    target = Path(path) if path else Path(config.EXPORT_DIR) / f"离职多申报更正操作单_{employee_name}.pdf"
+    target = Path(path) if path else export_file(f"离职多申报更正操作单_{employee_name}", "pdf", category="工资个税")
     target.parent.mkdir(parents=True, exist_ok=True)
 
     styles = getSampleStyleSheet()

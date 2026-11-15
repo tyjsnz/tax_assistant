@@ -3,6 +3,15 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循语义化版本 `MAJOR.MINOR.PATCH`。
 
+## [v1.54.0] - 2026-11-16
+
+### 新增
+- **资料中心**：所有导出文件按「公司/年/月或季度/类别」归档，支持按年月/类别/文件名检索、取用；
+- **统一导出路径**：`storage/export_paths.py`，按税款所属期归档，不再平铺在 exports/；
+- **导出索引**：`storage/export_index.py` 自动扫描并生成 `index.json`（大小、SHA-256、导出时间）；
+- **旧导出迁移脚本**：`scripts/migrate_exports.py`，默认预览，`--apply` 移动到 `_legacy/日期/`；
+- 页面 20 个；887 项测试通过；官网/下载包/在线演示更新 v1.54.0。
+
 ## [v1.53.0] - 2026-11-16
 
 ### 新增

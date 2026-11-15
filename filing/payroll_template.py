@@ -15,6 +15,7 @@ from typing import Any
 
 import config
 from engine.iit import calc_special_deduction
+from storage.export_paths import export_file
 from ledger import employees, payroll
 
 TEMPLATE_PATH = Path(config.RESOURCE_DIR) / "templates" / "正常工资薪金所得.xls"
@@ -154,7 +155,7 @@ def export_xls(period: str, id_cards: dict[str, str] | None = None, path: str | 
     from xlutils.copy import copy
 
     bundle = build_rows(period, id_cards)
-    target = Path(path) if path else Path(config.EXPORT_DIR) / f"正常工资薪金所得_{period}.xls"
+    target = Path(path) if path else export_file(f"正常工资薪金所得_{period}", "xls", period=period, category="工资个税", stamp=False)
     target.parent.mkdir(parents=True, exist_ok=True)
     workbook = xlrd.open_workbook(str(TEMPLATE_PATH), formatting_info=True)
     sheet_index = workbook.sheet_names().index(SHEET_NAME) if SHEET_NAME in workbook.sheet_names() else 0

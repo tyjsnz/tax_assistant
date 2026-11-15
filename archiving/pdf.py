@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from storage.export_paths import export_file
 
 FONT_NAME = "STSong-Light"
 
@@ -481,9 +482,7 @@ def build_filing_pdf(
     if not text and bundle_list:
         text = str(bundle_list[0].get("period") or "")
     if path is None:
-        target = Path(config.EXPORT_DIR) / (
-            f"申报表_{text or '期间'}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
-        )
+        target = export_file(f"申报表_{text or '期间'}", "pdf", period=text, category="申报表")
     else:
         target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

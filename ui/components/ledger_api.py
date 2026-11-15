@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import config
+from storage.export_paths import export_file
 import ledger
 from engine import (
     aggregate_rd_expenses,
@@ -65,7 +66,7 @@ def _write_csv(path: Path, headers: list[str], rows: Iterable[dict], keys: list[
 
 def _export_path(prefix: str) -> Path:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path(config.EXPORT_DIR) / f"{prefix}_{stamp}.csv"
+    return export_file(prefix, "csv", category="报表台账")
 
 
 def _alias_maps(table_name: str) -> dict[str, str]:

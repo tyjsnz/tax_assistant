@@ -336,7 +336,7 @@ def _fallback_export_excel(period: str, bundles: Sequence[dict]) -> Path:
         widths = {"A": 14, "B": 46, "C": 16, "D": 24, "E": 30}
         for column, width in widths.items():
             sheet.column_dimensions[column].width = width
-    target = Path(config.EXPORT_DIR) / f"申报包_{period}_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+    target = export_file(f"申报包_{period}", "xlsx", period=period, category="申报表")
     target.parent.mkdir(parents=True, exist_ok=True)
     workbook.save(target)
     return target
@@ -366,7 +366,7 @@ def _export_checklist(period: str, bundles: Sequence[dict]) -> Path:
                 )
         lines.append("")
     lines.append(config.DISCLAIMER)
-    target = Path(config.EXPORT_DIR) / f"申报核对清单_{period}_{datetime.now():%Y%m%d_%H%M%S}.md"
+    target = export_file(f"申报核对清单_{period}", "md", period=period, category="申报表")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines), encoding="utf-8")
     return target

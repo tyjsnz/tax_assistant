@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from storage.export_paths import export_file
 from engine.disability_fund import calc_disability_fund
 from engine.money import pct, round2, yuan
 
@@ -182,7 +183,7 @@ def export_disability_fund_excel(bundle: dict[str, Any], path: str | Path | None
     """导出残保金测算/申报辅助表（主表 + 校验/操作步骤）。"""
     from openpyxl import Workbook
 
-    target = Path(path) if path else Path(config.EXPORT_DIR) / f"残保金测算_{bundle.get('period')}.xlsx"
+    target = Path(path) if path else export_file(f"残保金测算_{bundle.get('period')}", "xlsx", period=bundle.get("period"), category="申报表")
     target.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook()
     ws = wb.active

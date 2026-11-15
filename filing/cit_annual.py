@@ -18,6 +18,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 import config
+from storage.export_paths import export_file
 from engine import get_settlement_sources, pct, round2, yuan
 from ledger.audit import log_calculation
 
@@ -453,7 +454,7 @@ def build_cit_annual_return(year: Any, *, settlement: dict[str, Any] | None = No
 # =============================================================================
 def _default_path(year: str) -> Path:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path(config.EXPORT_DIR) / f"企业所得税年度申报辅助表_{year}_{stamp}.xlsx"
+    return export_file(f"企业所得税年度申报辅助表_{year}", "xlsx", period=str(year), category="申报表")
 
 
 def _style_header(ws, row: int, headers: tuple[str, ...]) -> None:

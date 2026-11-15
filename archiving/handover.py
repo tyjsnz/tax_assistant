@@ -31,6 +31,7 @@ from typing import Any
 import pandas as pd
 
 import config
+from storage.export_paths import export_file
 import workspace
 from ledger import models
 
@@ -128,7 +129,7 @@ def build_handover_receipt(result: dict[str, Any], path: str | Path | None = Non
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"中文字体加载失败：{exc}") from exc
     target = Path(path) if path else (
-        Path(config.EXPORT_DIR) / f"交接签收单_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        export_file(f"交接签收单_{datetime.now().strftime('%Y%m%d_%H%M')}", "pdf", category="交接备份", stamp=False)
     )
     target.parent.mkdir(parents=True, exist_ok=True)
     sample = getSampleStyleSheet()
@@ -364,7 +365,7 @@ def build_handover_package(
     }
 
     target = Path(path) if path else (
-        Path(config.EXPORT_DIR) / f"公司账套交接_{_safe_suffix(str(company.get('name') or company.get('id') or 'company'))}_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
+        export_file(f"公司账套交接_{_safe_suffix(str(company.get('name') or company.get('id') or 'company'))}_{datetime.now().strftime('%Y%m%d_%H%M')}", "zip", category="交接备份", stamp=False)
     )
     target.parent.mkdir(parents=True, exist_ok=True)
 

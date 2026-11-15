@@ -328,7 +328,8 @@ class TestExport:
         bundle = iit.build_iit_return("2026-01")
         path = iit.export_iit_excel(bundle)
         assert isinstance(path, Path) and path.exists()
-        assert path.parent == Path(config.EXPORT_DIR)
+        assert Path(config.EXPORT_DIR) in path.parents
+        assert "2026" in path.parts and "01" in path.parts and "02_工资个税" in path.parts
         workbook = load_workbook(path)
         assert workbook.sheetnames == ["主表", "员工明细", "政策依据与操作步骤"]
         main_sheet = workbook["主表"]

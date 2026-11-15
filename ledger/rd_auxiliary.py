@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from storage.export_paths import export_file
 from engine.money import round2
 from engine.rd_deduction import (
     RD_CATEGORY_MAP,
@@ -108,7 +109,7 @@ def _by_project(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _export_default_path() -> Path:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path(config.EXPORT_DIR) / f"{TABLE_LABEL}_{stamp}.csv"
+    return export_file(TABLE_LABEL, "csv", category="报表台账")
 
 
 # =============================================================================

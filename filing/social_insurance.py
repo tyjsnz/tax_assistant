@@ -11,6 +11,7 @@ from typing import Any
 
 import config
 from ledger import employees, payroll
+from storage.export_paths import export_file
 
 
 def _month(value: Any) -> str:
@@ -72,7 +73,7 @@ def export_social_insurance_excel(bundle: dict[str, Any], path: str | Path | Non
     from openpyxl.styles import Font, PatternFill
 
     period = str(bundle.get("period") or "")
-    target = Path(path) if path else Path(config.EXPORT_DIR) / f"社保费申报辅助_{period}.xlsx"
+    target = Path(path) if path else export_file(f"社保费申报辅助_{period}", "xlsx", period=period, category="社保")
     target.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook()
     ws = wb.active

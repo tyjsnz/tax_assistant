@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from storage.export_paths import export_file
 from engine import (
     calc_stamp_tax,
     calc_vat,
@@ -399,7 +400,7 @@ def import_contracts_csv(path: Any) -> int:
 def export_contracts_csv(path: Any = None) -> Path:
     """导出合同台账为 CSV（中文表头），返回文件路径。"""
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    target = Path(path) if path else Path(config.EXPORT_DIR) / f"{CONTRACT_LABEL}_{stamp}.csv"
+    target = Path(path) if path else export_file(CONTRACT_LABEL, "csv", category="报表台账")
     target.parent.mkdir(parents=True, exist_ok=True)
     columns = models.TABLE_DEFS["contracts"]["columns"]
     rows = list_contracts()

@@ -19,6 +19,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 import config
 from engine.money import yuan
+from storage.export_paths import export_file
 
 EXPORT_DIR = Path(config.EXPORT_DIR)
 
@@ -103,8 +104,8 @@ def _timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def _default_path(name: str, extension: str) -> Path:
-    return Path(config.EXPORT_DIR) / f"{name}_{_timestamp()}.{extension}"
+def _default_path(name: str, extension: str, *, period: Any = None, category: str = "申报表") -> Path:
+    return export_file(name, extension, period=period, category=category)
 
 
 def _sheet_title(bundle: dict[str, Any]) -> str:
@@ -313,7 +314,7 @@ def export_bundle_excel(bundle: dict[str, Any], path: Any = None) -> Path:
     """导出单张申报表为 Excel（含「申报表」「校验结果」「填报指引」三个 sheet），返回文件路径。"""
     if not isinstance(bundle, dict):
         raise ValueError("申报表数据必须是 dict")
-    target = Path(path) if path else _default_path(f"{bundle.get('period') or '期间'}_{bundle.get('form_id') or '申报表'}", "xlsx")
+    target = Path(path) if path else _default_path(f"{bundle.get('period') or '期间'}_{bundle.get('form_id') or '申报表'}", "xlsx", period=bundle.get("period"))
     target.parent.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
     sheet = workbook.active
@@ -334,7 +335,7 @@ def export_package_excel(period: Any, bundles: list[dict[str, Any]] | None = Non
         from filing.registry import build_all
 
         bundles = build_all(text)
-    target = Path(path) if path else _default_path(f"申报包_{text}", "xlsx")
+    target = Path(path) if path else _default_path(f"申报包_{text}", "xlsx", period=text)
     target.parent.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
     summary_sheet = workbook.active
@@ -424,7 +425,7 @@ def export_bundle_json(bundle: dict[str, Any], path: Any = None) -> Path:
     """导出单张申报表为 JSON（UTF-8，便于程序读取或归档），返回文件路径。"""
     if not isinstance(bundle, dict):
         raise ValueError("申报表数据必须是 dict")
-    target = Path(path) if path else _default_path(f"{bundle.get('period') or '期间'}_{bundle.get('form_id') or '申报表'}", "json")
+    target = Path(path) if path else _default_path(f"{bundle.get('period') or '期间'}_{bundle.get('form_id') or '申报表'}", "json", period=bundle.get("period"))
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(bundle, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return target
@@ -439,7 +440,7 @@ def export_checklist_markdown(period: Any, bundles: list[dict[str, Any]] | None 
         from filing.registry import build_all
 
         bundles = build_all(text)
-    target = Path(path) if path else _default_path(f"申报核对清单_{text}", "md")
+    target = Path(path) if path else _default_path(f"申报核对清单_{text}", "md", period=text)
     target.parent.mkdir(parents=True, exist_ok=True)
 
     company = config.get_company()

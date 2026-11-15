@@ -20,6 +20,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 import config
+from storage.export_paths import export_file
 from engine import (
     BASIC_DEDUCTION_PER_MONTH,
     ZERO_DECLARATION_NOTE,
@@ -511,8 +512,7 @@ def build_iit_return(period: str, *, rows: list[dict[str, Any]] | None = None) -
 # Excel 导出（3 个 sheet）
 # =============================================================================
 def _default_path(period: str) -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path(config.EXPORT_DIR) / f"个人所得税扣缴辅助表_{period}_{stamp}.xlsx"
+    return export_file(f"个人所得税扣缴辅助表_{period}", "xlsx", period=period, category="工资个税")
 
 
 def _style_header(ws, row: int, headers: tuple[str, ...]) -> None:

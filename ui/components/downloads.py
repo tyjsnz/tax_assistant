@@ -19,6 +19,7 @@ from typing import Any
 import streamlit as st
 
 import config
+from storage.export_paths import export_dir
 
 
 def _safe_name(file_name: str, key: str) -> str:
@@ -75,7 +76,7 @@ def download_or_save(
     if file_path is not None and Path(file_path).exists():
         path = Path(file_path)
     else:
-        path = Path(config.EXPORT_DIR) / name
+        path = export_dir(category="其他") / name
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             if data is not None:
