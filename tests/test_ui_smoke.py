@@ -751,3 +751,10 @@ def test_iit_import_tab_renders() -> None:
     _assert_clean(at, "员工与工资（导入）")
     labels = [tab.label for tab in at.tabs]
     assert any("导入综合所得申报表" in label for label in labels)
+
+
+def test_payroll_fill_from_previous_button_renders() -> None:
+    at = _new_app()
+    _goto(at, "👥 员工与工资")
+    _assert_clean(at, "员工与工资（填充上月）")
+    assert at.button(key="payroll_fill_prev")

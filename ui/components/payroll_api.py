@@ -537,6 +537,14 @@ def delete_payroll_row(payroll_id: str) -> bool:
     return bool(module.delete_payroll_row(str(payroll_id)))
 
 
+def fill_from_previous(period: str) -> dict:
+    """用上一期工资填充本期空白项；后端缺失时抛中文错误。"""
+    module = _require("ledger.payroll", "月度工资表")
+    if not hasattr(module, "fill_from_previous"):
+        raise ValueError("月度工资表暂不可用：ledger.payroll.fill_from_previous 未实现。")
+    return module.fill_from_previous(period)
+
+
 def summarize_period(period: str) -> dict:
     """期间工资汇总（后端优先，缺失时本地按工资行计算）。"""
     module = _payroll_module()

@@ -765,6 +765,19 @@ def _render_confirm_result(period: str) -> None:
         st.caption("工资计提与发放代扣凭证已生成；凭证号可在工资表「凭证号」列核对。")
 
 
+def _fill_from_previous(period: str) -> None:
+    try:
+        result = PA.fill_from_previous(period)
+        st.success(f"已填充 {len(result.get('updated') or [])} 行空白项；累计数/税额未改动。")
+        if result.get("skipped"):
+            st.caption("未填充：" + "；".join(
+                f"{item.get('employee_name')}（{item.get('reason')}）" for item in result["skipped"][:8]
+            ))
+        _flash("已用上月工资填充空白项，请核对后重新计算个税。")
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"填充失败：{exc}")
+
+
 def _render_payroll_tab() -> None:
     """月度工资表 tab。"""
     ui.section(
@@ -794,6 +807,12 @@ def _render_payroll_tab() -> None:
                 handler()
     with action_cols[5]:
         st.caption("确认凭证前请先「重新计算个税」；已确认/已申报行不可修改。")
+    fill_cols = st.columns([3, 5])
+    with fill_cols[0]:
+        if st.button("📥 用上月数据填充空白项", key="payroll_fill_prev", width="stretch"):
+            _fill_from_previous(period)
+    with fill_cols[1]:
+        st.caption("只补当前为 0 的收入/社保/公积金/专项附加，不覆盖已填写金额，也不改累计数。")
 
     summary = PA.summarize_period(period)
     status_counts = summary.get("status_counts") or {}

@@ -697,6 +697,7 @@ __all__ = [
     "update_payroll_row",
     "delete_payroll_row",
     "create_import_draft",
+    "fill_from_previous",
     "cumulative_for_employee",
     "recalc_period",
     "mark_zero_declaration",
@@ -705,6 +706,45 @@ __all__ = [
     "summarize_period",
     "payroll_periods",
 ]
+
+
+def fill_from_previous(period: str, *, overwrite: bool = False) -> dict[str, Any]:
+    """用上一期工资填充本期空白项（不覆盖已有非零值，默认只补 0）。
+
+    用于已经生成过 0 草稿、或手工删空部分金额的场景；累计数/税额不动。
+    """
+    text = normalize_month(period)
+    locks.ensure_open(text, action="用上月工资填充")
+    rows = _payroll_rows(text)
+    fields = ("gross_salary", "bonus", "allowance", "social_insurance", "housing_fund", "special_deduction", "other_deduction")
+    updated: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for row in rows:
+        if _text(row.get("status")) != "草稿":
+            skipped.append({"employee_name": row.get("employee_name"), "reason": f"状态为{row.get('status')}，不可修改"})
+            continue
+        previous = _previous_payroll_row(_text(row.get("employee_id")), text)
+        if not previous:
+            skipped.append({"employee_name": row.get("employee_name"), "reason": "没有上一期工资记录"})
+            continue
+        patch: dict[str, Any] = {}
+        for field in fields:
+            current_value = round2(row.get(field))
+            previous_value = round2(previous.get(field))
+            if previous_value <= 0:
+                continue
+            if overwrite or current_value == 0:
+                patch[field] = previous_value
+        if not patch:
+            skipped.append({"employee_name": row.get("employee_name"), "reason": "没有空白项可填充"})
+            continue
+        note = _text(row.get("note"))
+        marker = f"已用 {previous.get('period')} 工资填充空白项"
+        patch["note"] = (note + "；" + marker).strip("；") if note else marker
+        updated.append(table(TABLE_NAME).update(str(row.get("id")), patch))
+    if updated:
+        log_user_action("用上月工资填充", f"{text}：填充 {len(updated)} 行空白项")
+    return {"period": text, "updated": updated, "skipped": skipped}
 
 
 def create_import_draft(

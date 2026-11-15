@@ -580,3 +580,16 @@ def test_build_payroll_carries_previous_month_values():
     assert row["cumulative_income"] == 0
     assert row["tax_withheld"] == 0
     assert "2026-10" in row["note"]
+
+
+def test_fill_from_previous_only_fills_zero_values():
+    employee = _add_employee()
+    payroll.create_import_draft("2026-09", employee["id"], employee["name"], gross_salary=9000, social_insurance=200, housing_fund=400)
+    payroll.create_import_draft("2026-10", employee["id"], employee["name"], gross_salary=0, social_insurance=0, housing_fund=0)
+    result = payroll.fill_from_previous("2026-10")
+    assert len(result["updated"]) == 1
+    row = result["updated"][0]
+    assert row["gross_salary"] == 9000
+    assert row["social_insurance"] == 200
+    assert row["housing_fund"] == 400
+    assert row["cumulative_tax"] == 0
