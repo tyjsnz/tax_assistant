@@ -139,13 +139,23 @@ def _build_record(payload: dict[str, Any], *, base: dict[str, Any] | None = None
         hire_date = models.normalize_date(None)
     leave_date = _non_empty_date(source.get("leave_date"))
 
-    id_card_source = payload.get("id_card", source.get("id_card_masked"))
+    # 完整证件号只在本地保存，用于导出扣缴端模板；脱敏值始终由完整值派生。
+    full_source = _text(payload.get("id_card_full") or source.get("id_card_full"))
+    legacy_id = _text(payload.get("id_card") or "")
+    if not full_source and legacy_id and "*" not in legacy_id:
+        full_source = legacy_id
+    if not full_source and base:
+        full_source = _text(base.get("id_card_full"))
+    id_card_source = full_source or _text(payload.get("id_card", source.get("id_card_masked")))
     id_card_masked = mask_id_card(id_card_source)
+    if full_source:
+        id_card_masked = mask_id_card(full_source)
 
     return {
         "employee_no": _text(source.get("employee_no")),
         "name": name,
         "id_card_masked": id_card_masked,
+        "id_card_full": full_source,
         "phone": _text(source.get("phone")),
         "department": _text(source.get("department")),
         "position": _text(source.get("position")),

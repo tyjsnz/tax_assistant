@@ -226,7 +226,7 @@ def parse_file(data: bytes, filename: str) -> dict[str, Any]:
     return {"rows": deduped, "sheets": used_sheets, "raw_count": len(records)}
 
 
-def _existing_index() -> tuple[set[str], set[str]]:
+def _existing_index() -> tuple[set[str], set[str], dict[str, dict[str, Any]]]:
     rows = employees.list_employees(status=None, include_left=True)
     # 已脱敏的证件号（含 *）不能作为唯一键，避免同尾号员工互相覆盖
     ids = {
@@ -235,13 +235,15 @@ def _existing_index() -> tuple[set[str], set[str]]:
         if row.get("id_card_masked") and "*" not in str(row.get("id_card_masked"))
     }
     names = {str(row.get("name") or "") for row in rows if row.get("name")}
-    return ids, names
+    by_name = {str(row.get("name") or ""): row for row in rows if row.get("name")}
+    return ids, names, by_name
 
 
 def import_employees(rows: list[dict[str, Any]], *, period: str = "") -> dict[str, Any]:
-    """从解析结果创建员工档案；已存在的按证件号/姓名跳过。"""
-    existing_ids, existing_names = _existing_index()
+    """从解析结果创建员工档案；已存在但缺完整身份证的补全，其余跳过。"""
+    existing_ids, existing_names, by_name = _existing_index()
     created: list[dict[str, Any]] = []
+    updated: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     errors: list[str] = []
     for row in rows:
@@ -253,7 +255,19 @@ def import_employees(rows: list[dict[str, Any]], *, period: str = "") -> dict[st
             skipped.append({"name": name, "reason": "身份证号已存在"})
             continue
         if name in existing_names:
-            skipped.append({"name": name, "reason": "姓名已存在"})
+            existing_employee = by_name.get(name) or {}
+            raw_full = _text(row.get("id_card")) or _text(row.get("id_card_full"))
+            if raw_full and "*" not in raw_full and not _text(existing_employee.get("id_card_full")):
+                try:
+                    updated_employee = employees.update_employee(
+                        str(existing_employee.get("id")),
+                        {"id_card_full": raw_full, "id_card_masked": row.get("id_card_masked") or masked},
+                    )
+                    updated.append(updated_employee)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"{name}：补全身份证失败：{exc}")
+            else:
+                skipped.append({"name": name, "reason": "姓名已存在"})
             continue
         leave_date = _text(row.get("leave_date"))
         status = "离职" if leave_date or "离职" in _text(row.get("status")) else "在职"
@@ -262,6 +276,7 @@ def import_employees(rows: list[dict[str, Any]], *, period: str = "") -> dict[st
             employee = employees.add_employee({
                 "name": name,
                 "id_card": row.get("id_card") or masked,
+                "id_card_full": row.get("id_card") if row.get("id_card") and "*" not in str(row.get("id_card")) else "",
                 "phone": row.get("phone") or "",
                 "hire_date": hire_date or None,
                 "leave_date": leave_date or None,
@@ -274,7 +289,7 @@ def import_employees(rows: list[dict[str, Any]], *, period: str = "") -> dict[st
             existing_names.add(name)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{name}：{exc}")
-    return {"created": created, "skipped": skipped, "errors": errors}
+    return {"created": created, "updated": updated, "skipped": skipped, "errors": errors}
 
 
 def create_payroll_drafts(rows: list[dict[str, Any]], *, period: str) -> dict[str, Any]:

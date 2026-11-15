@@ -29,6 +29,7 @@ EMPLOYEE_STATUS_FILTERS = ["在职", "离职", "全部"]
 EMPLOYEE_TABLE_COLUMNS: list[tuple[str, str]] = [
     ("employee_no", "工号"),
     ("name", "姓名"),
+    ("id_card_display", "身份证号"),
     ("department", "部门"),
     ("position", "岗位"),
     ("status", "状态"),
@@ -248,9 +249,9 @@ def _render_new_employee_form() -> None:
             name = st.text_input("姓名 *", key="payroll_new_name", placeholder="员工姓名")
             employee_no = st.text_input("工号", key="payroll_new_no")
             id_card = st.text_input(
-                "身份证号", key="payroll_new_id_card",
-                placeholder="仅保存脱敏值（前 6 + 后 4）",
-                help="系统不会保存身份证原文，只保存脱敏后的号码。",
+                "身份证号（完整）", key="payroll_new_id_card",
+                placeholder="用于本地显示和导出扣缴端模板",
+                help="完整号码仅保存在本机账套，不上传；导出模板时自动填充。",
             )
             phone = st.text_input("手机号", key="payroll_new_phone")
             department = st.text_input("部门", key="payroll_new_department")
@@ -288,6 +289,7 @@ def _render_new_employee_form() -> None:
         "name": name.strip(),
         "employee_no": employee_no.strip(),
         "id_card_masked": PA.mask_id_card(id_card) if id_card.strip() else "",
+        "id_card_full": id_card.strip(),
         "phone": phone.strip(),
         "department": department.strip(),
         "position": position.strip(),
@@ -337,6 +339,12 @@ def _render_edit_employee_form(employees: Sequence[dict]) -> None:
             )
             employee_no = st.text_input(
                 "工号", value=str(employee.get("employee_no") or ""), key=f"payroll_edit_no_{employee_id}"
+            )
+            id_card_full = st.text_input(
+                "身份证号（完整，本地保存）",
+                value=str(employee.get("id_card_full") or ""),
+                key=f"payroll_edit_id_full_{employee_id}",
+                help="仅用于本地显示和导出扣缴端模板，不上传。",
             )
             phone = st.text_input(
                 "手机号", value=str(employee.get("phone") or ""), key=f"payroll_edit_phone_{employee_id}"
@@ -405,6 +413,7 @@ def _render_edit_employee_form(employees: Sequence[dict]) -> None:
     patch = {
         "name": name.strip(),
         "employee_no": employee_no.strip(),
+        "id_card_full": id_card_full.strip(),
         "phone": phone.strip(),
         "department": department.strip(),
         "position": position.strip(),
@@ -488,7 +497,7 @@ def _render_employee_tab() -> None:
     """员工管理 tab。"""
     ui.section(
         "👥 员工管理",
-        "维护员工档案、社保/公积金基数与专项附加扣除；身份证号仅保存脱敏值（前 6 + 后 4）。",
+        "维护员工档案、社保/公积金基数与专项附加扣除；完整身份证仅保存在本机，用于工资表显示和扣缴端模板导出。",
     )
     if not PA.employees_ready():
         ui.module_missing("员工档案", "ledger.employees", detail=PA.missing_detail())
@@ -531,6 +540,7 @@ def _render_employee_tab() -> None:
     for row in rows:
         item = dict(row)
         item["special_text"] = PA.special_deduction_text(row)
+        item["id_card_display"] = row.get("id_card_full") or row.get("id_card_masked") or "—"
         display_rows.append(item)
     if display_rows:
         ui.records_table(
@@ -645,6 +655,7 @@ def _payroll_frame(rows: Sequence[dict]) -> pd.DataFrame:
         record = {
             "编号": str(row.get("id") or ""),
             "姓名": "（零申报）" if is_zero else str(row.get("employee_name") or ""),
+            "身份证号": "" if is_zero else str((PA.get_employee(str(row.get("employee_id") or "")) or {}).get("id_card_full") or (PA.get_employee(str(row.get("employee_id") or "")) or {}).get("id_card_masked") or ""),
             "员工编号": "" if is_zero else str(row.get("employee_id") or ""),
             "应发工资": F.to_float(row.get("gross_salary")),
             "奖金": F.to_float(row.get("bonus")),
@@ -904,7 +915,7 @@ def _render_payroll_tab() -> None:
     with st.expander("📤 导出扣缴端申报模板（正常工资薪金所得.xls）", expanded=export_open):
         st.caption(
             "以税务局下载的空白模板为底稿，填入本期工资；导出后可直接在自然人电子税务局扣缴端导入。"
-            "系统只保存脱敏身份证，因此完整证件号码需要在这里临时填写，仅用于本次导出，不落库。"
+            "工资表/员工档案里已保存完整身份证的会自动填入；缺失的可在这里补填，保存员工档案后下次自动带出。"
         )
         export_rows = PA.list_payroll(period)
         if not export_rows:
@@ -914,7 +925,7 @@ def _render_payroll_tab() -> None:
                 {
                     "员工编号": str(row.get("employee_id") or ""),
                     "姓名": str(row.get("employee_name") or ""),
-                    "证件号码": "",
+                    "证件号码": str((PA.get_employee(str(row.get("employee_id") or "")) or {}).get("id_card_full") or ""),
                     "本期收入": F.to_float(row.get("gross_salary")) + F.to_float(row.get("bonus")) + F.to_float(row.get("allowance")),
                     "社保": F.to_float(row.get("social_insurance")),
                     "公积金": F.to_float(row.get("housing_fund")),
@@ -926,12 +937,17 @@ def _render_payroll_tab() -> None:
                 id_frame, hide_index=True, key="payroll_export_id_editor", num_rows="fixed",
                 disabled=[column for column in id_frame.columns if column != "证件号码"],
                 column_config={
-                    "证件号码": st.column_config.TextColumn("证件号码", help="填写完整身份证号，仅用于本次导出，不保存"),
+                    "证件号码": st.column_config.TextColumn("证件号码", help="自动带出员工档案完整身份证；缺失可补填，建议保存到员工档案"),
                     "本期收入": st.column_config.NumberColumn("本期收入", format="¥%.2f"),
                     "社保": st.column_config.NumberColumn("社保", format="¥%.2f"),
                     "公积金": st.column_config.NumberColumn("公积金", format="¥%.2f"),
                 },
                 width="stretch",
+            )
+            save_ids = st.checkbox(
+                "把填写的证件号码保存到员工档案（下次自动带出）",
+                value=True,
+                key="payroll_export_save_ids",
             )
             if st.button("📤 生成扣缴端模板", key="payroll_export_template", width="stretch"):
                 id_cards = {
@@ -939,6 +955,15 @@ def _render_payroll_tab() -> None:
                     for _, row in edited_ids.iterrows()
                     if str(row["证件号码"]).strip()
                 }
+                save_errors = []
+                if save_ids:
+                    for employee_id, id_card in id_cards.items():
+                        try:
+                            PA.update_employee(employee_id, {"id_card_full": id_card})
+                        except Exception as exc:  # noqa: BLE001
+                            save_errors.append(f"{employee_id}：{exc}")
+                    if save_errors:
+                        st.warning("部分身份证保存失败：" + "；".join(save_errors[:5]))
                 try:
                     result = payroll_template.export_xls(period, id_cards=id_cards)
                     st.session_state["_payroll_template_result"] = result
@@ -1784,7 +1809,7 @@ def _render_iit_import_tab() -> None:
     if isinstance(last_result, dict):
         st.success(
             f"处理完成：勾选 {last_result.get('count', 0)} 人，创建员工 {len(last_result['employees']['created'])} 人，"
-            f"跳过 {len(last_result['employees']['skipped'])} 人。"
+            f"更新 {len(last_result['employees'].get('updated') or [])} 人，跳过 {len(last_result['employees']['skipped'])} 人。"
         )
         if last_result.get("payroll"):
             st.info(
@@ -1860,7 +1885,7 @@ def _render_iit_import_tab() -> None:
         st.session_state["_iit_import_result"] = {"employees": result, "payroll": payroll_result, "count": len(selected_rows)}
         st.session_state.pop("_iit_import_preview", None)
         st.rerun()
-    st.caption("身份证号只保存脱敏值（前 6 位 + **** + 后 4 位），不会写入日志原文。")
+    st.caption("完整身份证仅保存在本机账套（用于显示和导出），日志不写身份证原文；如果导出文件里是脱敏号码，需在员工档案手动补全完整号码。")
 
 
 def render() -> None:

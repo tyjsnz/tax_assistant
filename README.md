@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.52.0-informational)
+![Version](https://img.shields.io/badge/version-1.53.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -42,6 +42,7 @@
 
 | 🚀 新手引导 | 5 步从零配置：公司信息 → 税务基础 → 第一笔账 → 第一次申报 → 完成；含 AI 无需 Key 提示 | 引导页 + 本地进度文件 |
 | 📥 综合所得申报表导入 | 识别扣缴端多行表头/脱敏身份证，逐人确认后建员工档案，可同步生成工资表草稿 | 本地 Excel/CSV 解析，不联网 |
+| 🪪 身份证本地保存 | 员工完整身份证保存在本机账套，工资表显示、扣缴端模板自动带出 | 仅本地，不上传 |
 | 💾 统一导出 | 所有生成/导出的 Excel、PDF、CSV、ICS、Markdown 在桌面版统一保存到桌面，网页版浏览器下载 | 桌面/网页双模式 |
 | 📤 扣缴端模板导出 | 以税务局空白模板为底稿导出 `正常工资薪金所得.xls`，可直接在扣缴端导入 | 需临时填写完整证件号码 |
 | 📥 工资空白项填充 | 已生成 0 草稿时，一键用上月数据填 0 项，不覆盖已填金额、不改累计数 | 最近一期工资底稿 |
@@ -666,4 +667,4 @@ data/
 
 ---
 
-*版本 1.52.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.53.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

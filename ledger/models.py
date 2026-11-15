@@ -436,6 +436,7 @@ TABLE_DEFS: dict[str, dict[str, Any]] = {
             _col("employee_no", "str", "工号"),
             _col("name", "str", "姓名"),
             _col("id_card_masked", "str", "身份证号(脱敏)"),
+            _col("id_card_full", "str", "身份证号(完整，仅本地)"),
             _col("phone", "str", "手机号"),
             _col("department", "str", "部门"),
             _col("position", "str", "岗位"),

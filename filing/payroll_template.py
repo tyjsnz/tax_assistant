@@ -93,7 +93,7 @@ def build_rows(period: str, id_cards: dict[str, str] | None = None) -> dict[str,
     for row in rows:
         employee = employees.get_employee(_text(row.get("employee_id"))) or {}
         employee_id = _text(row.get("employee_id"))
-        full_id = _text(id_cards.get(employee_id))
+        full_id = _text(id_cards.get(employee_id)) or _text(employee.get("id_card_full"))
         if not full_id:
             missing_ids.append(_text(row.get("employee_name")))
         pension = round(float(row.get("pension_insurance") or 0), 2)
