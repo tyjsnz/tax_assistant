@@ -1,0 +1,3 @@
+# 仅桌面打包使用（不进入服务器 requirements）
+pyinstaller>=6.10
+pywebview>=5.3

@@ -488,7 +488,11 @@ def _assert_safe_root() -> None:
     """重置数据目录的安全校验：只允许项目内 data/ 或环境变量指定的临时目录。"""
     root = data_root().resolve()
     base = config.BASE_DIR.resolve()
-    allowed = str(root).startswith(str(base)) or bool(__import__("os").environ.get("TAX_DATA_DIR"))
+    allowed = (
+        str(root).startswith(str(base))
+        or root == Path(config.DATA_ROOT).resolve()
+        or bool(__import__("os").environ.get("TAX_DATA_DIR"))
+    )
     if not allowed:
         raise RuntimeError(f"拒绝重置非项目数据目录：{root}")
 

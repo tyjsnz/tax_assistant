@@ -30,26 +30,41 @@ from typing import Any
 #
 # workspace.activate(company_id) 会切换 DATA_DIR/BACKUP_DIR/UPLOAD_DIR；
 # 其余模块在运行时读取这些模块级变量，因此切换后无需重新 import。
-BASE_DIR = Path(__file__).resolve().parent
+import sys
+
+#: 是否运行在 PyInstaller 桌面打包环境中
+FROZEN = bool(getattr(sys, "frozen", False))
+BASE_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
+#: 打包后只读资源目录（PyInstaller _MEIPASS）；开发时等于项目目录
+RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", BASE_DIR)) if FROZEN else BASE_DIR
+
+def _default_data_root() -> Path:
+    if not FROZEN:
+        return BASE_DIR / "data"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "税小智"
+    if os.name == "nt":
+        return Path(os.environ.get("APPDATA") or Path.home()) / "税小智"
+    return Path.home() / ".local" / "share" / "税小智"
 
 #: 数据根目录（测试可用 TAX_DATA_DIR 指向临时目录实现隔离）
-DATA_ROOT = Path(os.environ.get("TAX_DATA_DIR") or (BASE_DIR / "data"))
+DATA_ROOT = Path(os.environ.get("TAX_DATA_DIR") or _default_data_root())
 
 #: 当前激活公司的数据目录（未启用多公司前默认等于 DATA_ROOT，由 workspace 切换）
 DATA_DIR = DATA_ROOT
 BACKUP_DIR = DATA_ROOT / "backups"
 UPLOAD_DIR = DATA_ROOT / "uploads"
-EXPORT_DIR = Path(os.environ.get("TAX_EXPORT_DIR") or (BASE_DIR / "exports"))
+EXPORT_DIR = Path(os.environ.get("TAX_EXPORT_DIR") or (DATA_ROOT / "exports" if FROZEN else BASE_DIR / "exports"))
 LOGS_DIR = Path(os.environ.get("TAX_LOG_DIR") or (DATA_ROOT / "logs"))
-POLICY_DIR = BASE_DIR / "knowledge" / "policy_files"
+POLICY_DIR = RESOURCE_DIR / "knowledge" / "policy_files"
 SETTINGS_FILE = DATA_ROOT / "user_settings.json"
 COMPANIES_FILE = DATA_ROOT / "companies.json"
 SCHEMA_FILE = DATA_ROOT / "schema.json"
-ENV_FILE = BASE_DIR / ".env"
+ENV_FILE = (BASE_DIR if not FROZEN else RESOURCE_DIR) / ".env"
 
 APP_NAME = "税小智 · 小规模纳税人自主税务填报系统"
 APP_SHORT_NAME = "税小智"
-APP_VERSION = "1.34.0"
+APP_VERSION = "1.35.0"
 
 DISCLAIMER = "⚠️ 仅供参考，以主管税务机关核定为准"
 

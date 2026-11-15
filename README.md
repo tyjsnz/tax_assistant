@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.34.0-informational)
+![Version](https://img.shields.io/badge/version-1.35.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -112,6 +112,7 @@
 | ⚡ AI 代办 | 预览 + 一键执行本地确定性操作：生成工资表、票据匹配入账、生成并归档申报包、导出离职更正操作单；**一键季度流水线**（票据→工资→异常→申报包）；写操作前自动备份 | 确定性工具编排 + 本地备份；不登录电子税务局、不提交申报 |
 | 🧾 发票合规判断 | 规则式回答：能不能入账 / 能不能抵扣增值税 / 能不能企业所得税税前扣除；覆盖专票普票、收据白条、个人消费、跨年发票等场景 | 确定性规则 + 风险提示，不靠 AI 猜 |
 | 📥 票据与流水 | 批量导入数电票（XML/OFD/PDF）与银行流水（CSV/Excel），去重入池、自动匹配、一键确认入账并生成凭证 | 本地解析（xml/zipfile/pypdf/openpyxl）+ 确定性匹配打分 |
+| 🖥️ 桌面安装版 | 双击运行的 macOS `.app` / Windows `.exe`，内置 Python/浏览器窗口，无需命令行；数据存用户目录 | PyInstaller + pywebview + Streamlit |
 | 🏦 社保费申报辅助 | 按月汇总参保人数、缴费基数、个人代扣社保/公积金，导出 Excel；单位部分按当地费率在电子税务局/社保客户端申报 | 工资表 + 员工档案汇总，不代替社保申报 |
 | 📋 自主申报填报 | 按期间生成增值税申报表（栏次）、企业所得税预缴表、财务报表、印花税申报表；逐栏展示来源与口径；校验勾稽关系；导出 Excel/JSON；填报进度跟踪 | 引擎取数 → 申报表模板 → 校验器 → openpyxl 导出 |
 | 🔍 申报核对 | 上传申报表截图 OCR → 字段映射 → 与台账/引擎结果逐栏比对 → 差异报告 | macOS Vision（本地 OCR）+ DeepSeek 文字理解 |
@@ -657,4 +658,4 @@ data/
 
 ---
 
-*版本 1.34.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.35.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

@@ -25,7 +25,7 @@ DEMO_ACCOUNT_NO = "6222020200012345"
 
 def _example_dir() -> Path:
     """示例文件目录（``config.BASE_DIR/examples``，与测试临时数据目录无关）。"""
-    return Path(config.BASE_DIR) / "examples"
+    return Path(getattr(config, 'RESOURCE_DIR', config.BASE_DIR)) / "examples"
 
 
 def seed_demo_pool(reset: bool = False) -> dict[str, Any]:

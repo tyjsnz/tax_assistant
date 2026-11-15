@@ -44,3 +44,7 @@ site/download/*.tar.gz
 
 # 内部开发规范（仅本地使用，不入库）
 /报税Agent开发规范.md
+
+# 桌面打包产物（可选上传到官网下载，不进 git）
+build/
+dist_desktop/

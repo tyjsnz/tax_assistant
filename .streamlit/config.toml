@@ -47,7 +47,6 @@ textColor = "#1D2129"
 
 [server]
 headless = true
-port = 8501
 fileWatcherType = "auto"
 maxUploadSize = 20
 

@@ -3,6 +3,17 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循语义化版本 `MAJOR.MINOR.PATCH`。
 
+## [v1.35.0] - 2026-11-15
+
+### 新增
+- **桌面安装版**：PyInstaller + pywebview 打包，双击运行，无需 Python/命令行；
+  - macOS `.app`，Windows `.exe`（GitHub Actions 构建）；
+  - 数据存用户目录，不写入安装包；
+  - 未签名版本首次打开需右键打开/允许。
+- 新增 `desktop_launcher.py`、`packaging/tax.spec`、桌面构建工作流与说明。
+- 适配 PyInstaller 打包路径：资源目录只读、数据目录用户可写。
+- 全量离线测试 853 项；官网/下载包/在线演示更新 v1.35.0。
+
 ## [v1.34.0] - 2026-11-15
 
 ### 新增/变更
