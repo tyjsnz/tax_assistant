@@ -40,11 +40,24 @@ def _collect(package):
 for package in ("streamlit", "webview"):
     _collect(package)
 
-for package in ("ui", "agent", "engine", "ledger", "filing", "closing", "archiving", "ingest", "knowledge", "onboarding", "integrations", "guidebooks", "automation", "ocr"):
+PACKAGES = ("ui", "agent", "engine", "ledger", "filing", "closing", "archiving", "ingest", "knowledge", "onboarding", "integrations", "guidebooks", "automation", "ocr")
+for package in PACKAGES:
+    # 顶层包自身必须显式加入，否则 __init__.py 可能不会被打包；
+    # 动态页面（ui.views.*）依赖这个入口，缺了会出现 ImportError。
+    hiddenimports.append(package)
     try:
         hiddenimports.extend(collect_submodules(package))
     except Exception:
         pass
+
+# 这些是页面动态导入链上的关键子模块，显式兜底
+hiddenimports += [
+    "ledger.locks",
+    "ledger.store",
+    "ledger.models",
+    "ui.streamlit_app",
+    "ui.views.dashboard",
+]
 
 hiddenimports += [
     "webview.platforms.cocoa",

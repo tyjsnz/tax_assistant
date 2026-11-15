@@ -3,6 +3,13 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循语义化版本 `MAJOR.MINOR.PATCH`。
 
+## [v1.35.1] - 2026-11-15
+
+### 修复
+- 桌面版 PyInstaller 打包未收集 `ledger` 等顶层包，导致 `ImportError: cannot import name 'locks' from 'ledger'`；
+  已显式收集所有业务包并补关键子模块，macOS 打包版实测首页/页面渲染正常。
+- 全量 853 项测试通过；官网/下载包/在线演示更新 v1.35.1。
+
 ## [v1.35.0] - 2026-11-15
 
 ### 新增
