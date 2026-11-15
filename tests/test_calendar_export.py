@@ -24,3 +24,11 @@ def test_build_ics_contains_events_and_alarm():
 def test_build_ics_skips_invalid_dates():
     text = build_ics([{"key": "x", "name": "坏日期", "due_date": "not-a-date"}])
     assert "BEGIN:VEVENT" not in text
+
+
+def test_qr_png_signature():
+    from ui.components.qr import qr_png
+
+    data = qr_png("https://tax.flacn.net/calendar.html")
+    assert data.startswith(b"\x89PNG")
+    assert len(data) > 500

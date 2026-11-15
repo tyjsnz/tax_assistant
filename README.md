@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.31.0-informational)
+![Version](https://img.shields.io/badge/version-1.32.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -41,7 +41,7 @@
 ## 界面预览
 
 | 🚀 新手引导 | 5 步从零配置：公司信息 → 税务基础 → 第一笔账 → 第一次申报 → 完成；含 AI 无需 Key 提示 | 引导页 + 本地进度文件 |
-| 🗓️ 报税日历 | 按月/季/年列出必申报事项、截止日、剩余天数和 3 步操作说明；支持导出 .ics | 申报日历引擎 + 确定性日期计算 |
+| 🗓️ 报税日历 | 按月/季/年列出必申报事项、截止日、剩余天数和 3 步操作说明；支持 .ics 导出 + 手机扫码导入 | 申报日历引擎 + 确定性日期计算 |
 | 🏠 首页驾驶舱 | 🧮 算税工作台 |
 |---|---|
 | ![首页驾驶舱](docs/screenshots/01_dashboard.png) | ![算税工作台](docs/screenshots/03_calculator.png) |
@@ -656,4 +656,4 @@ data/
 
 ---
 
-*版本 1.31.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.32.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

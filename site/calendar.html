@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>智小税 · 手机导入申报日历</title>
+<style>
+:root{--bg:#070b14;--card:#0b1220;--line:rgba(255,255,255,.12);--mint:#37e6b0;--text:#e8eef8;--muted:#9aa8bd}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 20% 0%,rgba(55,230,176,.14),transparent 60%),var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7}
+.wrap{max-width:680px;margin:0 auto;padding:48px 20px 64px}
+.badge{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid rgba(55,230,176,.4);border-radius:999px;color:var(--mint);font-size:13px}
+h1{font-size:30px;line-height:1.3;margin:18px 0 8px}
+p{color:var(--muted);margin:8px 0}
+.card{margin-top:22px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px}
+.btn{display:block;text-align:center;text-decoration:none;padding:14px 16px;border-radius:12px;font-weight:700;margin:10px 0}
+.primary{background:linear-gradient(135deg,#37e6b0,#5b9dff);color:#06131c}
+.secondary{border:1px solid rgba(55,230,176,.45);color:var(--mint)}
+.small{font-size:13px;color:var(--muted)}
+.notice{margin-top:22px;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--line);font-size:13px;color:var(--muted)}
+.brand{margin-top:28px;text-align:center;font-size:12px;color:var(--muted)}
+.brand a{color:var(--mint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="badge">✅ 官方发行版 · 智小税</span>
+  <h1>把申报日历导入手机</h1>
+  <p>扫码后按下面按钮操作：iPhone 用「订阅日历」，Android 用「下载 .ics 文件」。</p>
+
+  <div class="card">
+    <h2 style="margin:0 0 8px;font-size:18px">2026 年申报日历</h2>
+    <a class="btn primary" href="webcal://tax.flacn.net/download/tax-calendar-2026.ics">iPhone：订阅 2026 年日历</a>
+    <a class="btn secondary" href="/download/tax-calendar-2026.ics" download>Android / 其他：下载 2026 年 .ics</a>
+  </div>
+  <div class="card">
+    <h2 style="margin:0 0 8px;font-size:18px">2027 年申报日历</h2>
+    <a class="btn primary" href="webcal://tax.flacn.net/download/tax-calendar-2027.ics">iPhone：订阅 2027 年日历</a>
+    <a class="btn secondary" href="/download/tax-calendar-2027.ics" download>Android / 其他：下载 2027 年 .ics</a>
+  </div>
+
+  <div class="notice">
+    <b>说明</b><br/>
+    · 日历内容为小规模纳税人通用申报事项（个税/社保按月，增值税/附加/企业所得税预缴/财务报表/印花税按季，汇算/工商年报/残保金按年）。<br/>
+    · 不含任何企业账目或客户数据；截止日遇周末顺延，节假日以税务机关公告为准。<br/>
+    · 导入后由手机系统日历提前 3 天提醒；不同手机品牌/日历 App 的导入入口略有差异。
+  </div>
+  <div class="brand">官方发行版 · tax.flacn.net · 开发方 snz · 274043505@qq.com</div>
+</div>
+</body>
+</html>

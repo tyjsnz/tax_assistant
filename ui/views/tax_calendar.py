@@ -202,6 +202,43 @@ def _render_year_view(year: int) -> None:
     st.caption("导入手机/电脑日历后，可由系统日历提前 3 天提醒；节假日以税务机关公告为准。")
 
 
+def _render_mobile_import() -> None:
+    """手机扫码导入官方通用申报日历。"""
+    import io
+
+    from ui.components import branding
+    from ui.components.qr import qr_png
+
+    st.markdown("---")
+    ui.section(
+        "📱 手机扫码导入日历",
+        "用手机相机扫码 → 打开官方日历页 → 按提示订阅/下载；日历为通用小规模纳税人事项，不含企业账目。",
+    )
+    base = str(branding.OFFICIAL.get("site") or "https://tax.flacn.net").rstrip("/")
+    landing = base + "/calendar.html"
+    try:
+        png = qr_png(landing)
+    except Exception as exc:  # noqa: BLE001
+        st.info(f"二维码暂不可用：{exc}；可手动打开 {landing}")
+        return
+    cols = st.columns([1, 2])
+    with cols[0]:
+        st.image(io.BytesIO(png), width=230, caption="微信/相机扫码")
+    with cols[1]:
+        st.markdown(
+            "- **iPhone**：扫码 → 打开页面 → 点「订阅 2026 年日历」；\n"
+            "- **Android**：扫码 → 下载 `.ics` → 用系统日历打开；\n"
+            "- 也可以把链接复制到手机浏览器：\n"
+            f"  `{landing}`\n"
+            "- 导入后由手机系统日历提前 3 天提醒。"
+        )
+        st.link_button("在手机上打开日历页", landing, width="stretch")
+    st.caption(
+        "说明：扫码打开的是官网通用日历（税额/账目不会上传）；"
+        "若你使用本地部署且手机无法访问官网，可先下载 .ics 再传到手机导入。"
+    )
+
+
 def render() -> None:
     """渲染报税日历页。"""
     ui.page_header(
@@ -218,4 +255,5 @@ def render() -> None:
         _render_month_view(year)
     with tabs[2]:
         _render_year_view(year)
+    _render_mobile_import()
     theme.disclaimer()
