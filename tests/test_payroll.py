@@ -593,3 +593,19 @@ def test_fill_from_previous_only_fills_zero_values():
     assert row["social_insurance"] == 200
     assert row["housing_fund"] == 400
     assert row["cumulative_tax"] == 0
+
+
+def test_confirm_idempotent_and_delete_entries():
+    employee = _add_employee()
+    payroll.build_payroll("2026-06", employee_ids=[employee["id"]])
+    row = payroll.list_payroll("2026-06")[0]
+    payroll.update_payroll_row(row["id"], {"gross_salary": 10000, "social_insurance": 500, "housing_fund": 500})
+    payroll.recalc_period("2026-06")
+    first = payroll.confirm_period("2026-06")
+    assert len(first["entries"]) == 2
+    second = payroll.confirm_period("2026-06")
+    assert len(second["entries"]) == 2
+    assert second["warnings"]
+    deleted = payroll.delete_payroll_entries("2026-06")
+    assert deleted["deleted"] == 2
+    assert payroll.list_payroll("2026-06")[0]["status"] == "草稿"

@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 import config
+from filing import payroll_template
 from ingest import iit_import
 from ui.components import cache, formatting as F, nav, payroll_api as PA, runtime, theme, ui
 
@@ -778,6 +779,16 @@ def _fill_from_previous(period: str) -> None:
         st.error(f"填充失败：{exc}")
 
 
+def _delete_payroll_entries(period: str) -> None:
+    try:
+        result = PA.delete_period_entries(period)
+        cache.clear()
+        _flash(f"已删除 {result.get('deleted', 0)} 张工资凭证，{result.get('reset', 0)} 行退回草稿，可重新确认生成。")
+        st.rerun()
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"删除凭证失败：{exc}")
+
+
 def _render_payroll_tab() -> None:
     """月度工资表 tab。"""
     ui.section(
@@ -793,20 +804,25 @@ def _render_payroll_tab() -> None:
         "工资月份", months, index=month_index, format_func=PA.month_label, key="payroll_month"
     )
 
-    action_cols = st.columns([2, 2, 2, 2, 2, 3])
+    existing_rows = PA.list_payroll(period)
+    existing_entries = PA.period_entries(period)
+    has_draft_rows = any(str(row.get("status")) == "草稿" for row in existing_rows)
+    action_cols = st.columns([2, 2, 2, 2, 3])
     actions = [
         ("🧮 生成工资表", "payroll_build", PA.payroll_ready(), lambda: _build_payroll(period)),
         ("🔁 重新计算个税", "payroll_recalc", PA.recalc_ready(), lambda: _recalc_payroll(period)),
-        ("✅ 确认并生成凭证", "payroll_confirm", PA.confirm_ready(), lambda: _confirm_payroll(period)),
+        ("✅ 确认并生成凭证", "payroll_confirm", PA.confirm_ready() and has_draft_rows and not existing_entries, lambda: _confirm_payroll(period)),
         ("📤 标记已申报", "payroll_declare", PA.declare_ready(), lambda: _declare_payroll(period)),
-        ("🧾 本期零申报", "payroll_zero", PA.zero_declaration_ready(), lambda: _zero_declare_payroll(period)),
     ]
     for column, (label, key, ready, handler) in zip(action_cols, actions):
         with column:
             if st.button(label, key=key, width="stretch", disabled=not ready, type="primary" if key == "payroll_build" else "secondary"):
                 handler()
-    with action_cols[5]:
-        st.caption("确认凭证前请先「重新计算个税」；已确认/已申报行不可修改。")
+    with action_cols[4]:
+        if existing_entries:
+            st.caption("本期工资凭证已生成，不会重复生成；如需重做，先删除凭证。")
+        else:
+            st.caption("确认凭证前请先「重新计算个税」；已确认/已申报行不可修改。")
     fill_cols = st.columns([3, 5])
     with fill_cols[0]:
         if st.button("📥 用上月数据填充空白项", key="payroll_fill_prev", width="stretch"):
@@ -835,7 +851,7 @@ def _render_payroll_tab() -> None:
             f"{PA.month_label(period)} 暂无工资表。",
             icon="💰",
         )
-        st.caption("若本月未发工资，建议点击「🧾 本期零申报」以保留减除费用额度。")
+        st.caption("若本月确实没有发放工资，请展开下方「本月没有发放工资？零申报说明」按实际情况处理。")
     else:
         frame = _payroll_frame(rows)
         edited = st.data_editor(
@@ -855,7 +871,90 @@ def _render_payroll_tab() -> None:
         with save_cols[1]:
             st.caption("金额均为元；编辑后请重新计算个税再确认。")
 
+    entries_now = PA.period_entries(period)
+    if entries_now:
+        with st.container(border=True):
+            st.markdown("**🧾 本期工资凭证**")
+            st.caption("本期凭证只生成一次；重复点击确认不会新增凭证。")
+            st.write("；".join(f"{item.get('entry_no')}（¥{F.fmt_money(item.get('total'))}）" for item in entries_now))
+            confirm_delete = st.checkbox("我确认要删除本期工资凭证（工资行会退回草稿）", key="payroll_delete_entries_confirm")
+            if st.button("🗑️ 删除本期工资凭证", key="payroll_delete_entries", width="stretch", disabled=not confirm_delete):
+                _delete_payroll_entries(period)
+
+    with st.expander("📤 导出扣缴端申报模板（正常工资薪金所得.xls）", expanded=False):
+        st.caption(
+            "以税务局下载的空白模板为底稿，填入本期工资；导出后可直接在自然人电子税务局扣缴端导入。"
+            "系统只保存脱敏身份证，因此完整证件号码需要在这里临时填写，仅用于本次导出，不落库。"
+        )
+        export_rows = PA.list_payroll(period)
+        if not export_rows:
+            st.info("本期还没有工资表，先生成工资表再导出。")
+        else:
+            id_frame = pd.DataFrame([
+                {
+                    "员工编号": str(row.get("employee_id") or ""),
+                    "姓名": str(row.get("employee_name") or ""),
+                    "证件号码": "",
+                    "本期收入": F.to_float(row.get("gross_salary")) + F.to_float(row.get("bonus")) + F.to_float(row.get("allowance")),
+                    "社保": F.to_float(row.get("social_insurance")),
+                    "公积金": F.to_float(row.get("housing_fund")),
+                }
+                for row in export_rows
+                if str(row.get("employee_id") or "") != PA.ZERO_EMPLOYEE_ID
+            ])
+            edited_ids = st.data_editor(
+                id_frame, hide_index=True, key="payroll_export_id_editor", num_rows="fixed",
+                disabled=[column for column in id_frame.columns if column != "证件号码"],
+                column_config={
+                    "证件号码": st.column_config.TextColumn("证件号码", help="填写完整身份证号，仅用于本次导出，不保存"),
+                    "本期收入": st.column_config.NumberColumn("本期收入", format="¥%.2f"),
+                    "社保": st.column_config.NumberColumn("社保", format="¥%.2f"),
+                    "公积金": st.column_config.NumberColumn("公积金", format="¥%.2f"),
+                },
+                width="stretch",
+            )
+            if st.button("📤 生成扣缴端模板", key="payroll_export_template", width="stretch"):
+                id_cards = {
+                    str(row["员工编号"]): str(row["证件号码"]).strip()
+                    for _, row in edited_ids.iterrows()
+                    if str(row["证件号码"]).strip()
+                }
+                try:
+                    result = payroll_template.export_xls(period, id_cards=id_cards)
+                    st.session_state["_payroll_template_result"] = result
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"导出失败：{exc}")
+            result = st.session_state.get("_payroll_template_result")
+            if isinstance(result, dict):
+                for warning in result.get("warnings") or []:
+                    st.warning(warning)
+                path = Path(result["path"])
+                if path.exists():
+                    st.download_button(
+                        "⬇️ 下载正常工资薪金所得.xls",
+                        data=path.read_bytes(),
+                        file_name=f"正常工资薪金所得_{period}.xls",
+                        mime="application/vnd.ms-excel",
+                        key="payroll_template_download",
+                        width="stretch",
+                    )
+                st.caption("累计专项附加扣除分项目前导出为 0；如本月有专项附加，请在模板中按员工补齐。")
+
     _render_confirm_result(period)
+
+    with st.expander("🧾 本月没有发放工资？零申报说明", expanded=False):
+        st.markdown(
+            "**零申报 ≠ 工资为 0。** 零申报指本月**没有实际发放工资、没有应税收入**（如停业、全员未发工资）。\n\n"
+            "- 有员工且正常发工资：必须按实际收入申报，即使工资低于 5,000 元、税额为 0，也不是零申报；\n"
+            "- 有员工但本月确实未发工资：可能适用零申报，具体以主管税务机关口径为准；\n"
+            "- 本期已经生成工资表的，不要使用零申报。"
+        )
+        if existing_rows:
+            st.info("本期已有工资表，不能做零申报；如金额不对，请修改工资表或删除凭证后重做。")
+        else:
+            zero_confirm = st.checkbox("我确认本月没有发放工资，且主管税务机关允许零申报", key="payroll_zero_confirm")
+            if st.button("确认本月无工资（零申报）", key="payroll_zero", width="stretch", disabled=not zero_confirm):
+                _zero_declare_payroll(period)
 
     with st.expander("📌 2026 年扣缴端减除费用规则", expanded=False):
         st.info(PA.zero_declaration_note(), icon="📌")

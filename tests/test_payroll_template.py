@@ -1,0 +1,29 @@
+"""扣缴端工资模板导出测试（v1.46）。"""
+
+from __future__ import annotations
+
+from filing import payroll_template
+from ledger import employees, payroll
+
+
+def test_export_template_with_ids(tmp_path):
+    employee = employees.add_employee({"name": "模板测试", "employee_no": "E001", "hire_date": "2026-01-01"})
+    payroll.build_payroll("2026-10", employee_ids=[employee["id"]])
+    row = payroll.list_payroll("2026-10")[0]
+    payroll.update_payroll_row(row["id"], {
+        "gross_salary": 8000, "social_insurance": 600, "pension_insurance": 400,
+        "medical_insurance": 150, "unemployment_insurance": 50, "housing_fund": 500,
+    })
+    target = tmp_path / "正常工资薪金所得.xls"
+    result = payroll_template.export_xls("2026-10", id_cards={employee["id"]: "530101199001011234"}, path=target)
+    assert target.exists() and result["count"] == 1
+    assert not result["warnings"]
+    import xlrd
+    workbook = xlrd.open_workbook(str(target))
+    sheet = workbook.sheet_by_name("正常工资薪金收入")
+    headers = [sheet.cell_value(0, col) for col in range(sheet.ncols)]
+    assert headers[1] == "*姓名"
+    assert sheet.cell_value(1, headers.index("*姓名")) == "模板测试"
+    assert sheet.cell_value(1, headers.index("*证件号码")) == "530101199001011234"
+    assert sheet.cell_value(1, headers.index("本期收入")) == 8000
+    assert sheet.cell_value(1, headers.index("基本养老保险费")) == 400

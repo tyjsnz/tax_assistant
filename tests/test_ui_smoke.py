@@ -394,7 +394,6 @@ def test_payroll_page_renders_empty() -> None:
     assert any("生成工资表" in label for label in labels), "应有「生成工资表」按钮"
     assert any("重新计算个税" in label for label in labels), "应有「重新计算个税」按钮"
     assert any("确认并生成凭证" in label for label in labels), "应有「确认并生成凭证」按钮"
-    assert any("本期零申报" in label for label in labels), "应有「本期零申报」按钮"
     assert any("标记已申报" in label for label in labels), "应有「标记已申报」按钮"
     assert any("生成辅助表" in label for label in labels), "应有「生成辅助表」按钮"
     assert any("生成 Excel" in label for label in labels), "应有「生成 Excel」按钮"
@@ -467,14 +466,17 @@ def test_payroll_employee_create_and_payroll_flow() -> None:
 
 
 def test_payroll_zero_declaration() -> None:
-    """无工资月份点击「本期零申报」不崩溃，并插入零申报记录。"""
+    """无工资月份：确认后才可点击「确认本月无工资（零申报）」。"""
     pytest.importorskip("ledger.payroll")
     import ledger
 
     at = _new_app()
     _goto(at, "👥 员工与工资")
-    zero_buttons = [button for button in at.button if "本期零申报" in button.label]
-    assert zero_buttons, "应提供「本期零申报」按钮"
+    confirm = [item for item in at.checkbox if item.key == "payroll_zero_confirm"]
+    assert confirm, "应有零申报确认勾选"
+    confirm[0].set_value(True).run()
+    zero_buttons = [button for button in at.button if "确认本月无工资" in button.label]
+    assert zero_buttons, "应提供「确认本月无工资（零申报）」按钮"
     if zero_buttons[0].disabled:
         pytest.skip("零申报后端未就绪（按钮禁用）")
     zero_buttons[0].click().run()

@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.45.0-informational)
+![Version](https://img.shields.io/badge/version-1.46.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -42,6 +42,7 @@
 
 | 🚀 新手引导 | 5 步从零配置：公司信息 → 税务基础 → 第一笔账 → 第一次申报 → 完成；含 AI 无需 Key 提示 | 引导页 + 本地进度文件 |
 | 📥 综合所得申报表导入 | 识别扣缴端多行表头/脱敏身份证，逐人确认后建员工档案，可同步生成工资表草稿 | 本地 Excel/CSV 解析，不联网 |
+| 📤 扣缴端模板导出 | 以税务局空白模板为底稿导出 `正常工资薪金所得.xls`，可直接在扣缴端导入 | 需临时填写完整证件号码 |
 | 📥 工资空白项填充 | 已生成 0 草稿时，一键用上月数据填 0 项，不覆盖已填金额、不改累计数 | 最近一期工资底稿 |
 | 📅 工资跨月带出 | 生成新月份工资表时自动带出上月收入/社保/公积金/专项附加，累计数归零待重算 | 上月工资底稿 |
 | 🔍 发票查重核对 | 按发票号码/代码识别重复，交叉核对收入/费用台账，判断之前是否已入账 | 发票池 + 台账本地核对 |
@@ -664,4 +665,4 @@ data/
 
 ---
 
-*版本 1.45.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.46.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

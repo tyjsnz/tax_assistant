@@ -42,6 +42,9 @@ _EDITABLE_FIELDS: tuple[str, ...] = (
     "bonus",
     "allowance",
     "social_insurance",
+    "pension_insurance",
+    "medical_insurance",
+    "unemployment_insurance",
     "housing_fund",
     "special_deduction",
     "other_deduction",
@@ -52,6 +55,9 @@ _MONEY_FIELDS: tuple[str, ...] = (
     "bonus",
     "allowance",
     "social_insurance",
+    "pension_insurance",
+    "medical_insurance",
+    "unemployment_insurance",
     "housing_fund",
     "special_deduction",
     "other_deduction",
@@ -180,7 +186,11 @@ def build_payroll(period: str, *, employee_ids: list[str] | None = None) -> dict
             )
             continue
         previous = _previous_payroll_row(employee_id, text)
-        carried_fields = ("gross_salary", "bonus", "allowance", "social_insurance", "housing_fund", "special_deduction", "other_deduction")
+        carried_fields = (
+            "gross_salary", "bonus", "allowance", "social_insurance",
+            "pension_insurance", "medical_insurance", "unemployment_insurance",
+            "housing_fund", "special_deduction", "other_deduction",
+        )
         if previous is not None:
             base_values = {field: round2(previous.get(field)) for field in carried_fields}
             note = f"以上月 {previous.get('period')} 工资为草稿基础（{previous.get('period')}），请核对后重算"
@@ -698,6 +708,8 @@ __all__ = [
     "delete_payroll_row",
     "create_import_draft",
     "fill_from_previous",
+    "list_payroll_entries",
+    "delete_payroll_entries",
     "cumulative_for_employee",
     "recalc_period",
     "mark_zero_declaration",
@@ -716,7 +728,10 @@ def fill_from_previous(period: str, *, overwrite: bool = False) -> dict[str, Any
     text = normalize_month(period)
     locks.ensure_open(text, action="用上月工资填充")
     rows = _payroll_rows(text)
-    fields = ("gross_salary", "bonus", "allowance", "social_insurance", "housing_fund", "special_deduction", "other_deduction")
+    fields = (
+        "gross_salary", "bonus", "allowance", "social_insurance", "pension_insurance",
+        "medical_insurance", "unemployment_insurance", "housing_fund", "special_deduction", "other_deduction",
+    )
     updated: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for row in rows:
@@ -754,6 +769,9 @@ def create_import_draft(
     *,
     gross_salary: float = 0.0,
     social_insurance: float = 0.0,
+    pension_insurance: float = 0.0,
+    medical_insurance: float = 0.0,
+    unemployment_insurance: float = 0.0,
     housing_fund: float = 0.0,
     special_deduction: float = 0.0,
     tax_withheld: float = 0.0,
@@ -779,6 +797,9 @@ def create_import_draft(
         "bonus": 0.0,
         "allowance": 0.0,
         "social_insurance": round2(social_insurance),
+        "pension_insurance": round2(pension_insurance),
+        "medical_insurance": round2(medical_insurance),
+        "unemployment_insurance": round2(unemployment_insurance),
         "housing_fund": round2(housing_fund),
         "special_deduction": round2(special_deduction),
         "other_deduction": 0.0,
@@ -799,3 +820,40 @@ def create_import_draft(
     added = table(TABLE_NAME).append(record)
     log_user_action("导入工资草稿", f"{text} {_text(employee_name)}：应发 {record['gross_salary']:.2f} 元（待核对累计数）")
     return added
+
+
+def list_payroll_entries(period: str) -> list[dict[str, Any]]:
+    """返回本期工资凭证（计提 + 发放），供页面判断是否已生成。"""
+    return _find_pay_entries(normalize_month(period))
+
+
+def delete_payroll_entries(period: str) -> dict[str, Any]:
+    """删除本期工资凭证，并把已确认工资行退回草稿，便于重新生成。
+
+    已申报行禁止删除；已结账期间需先反结账。
+    """
+    text = normalize_month(period)
+    locks.ensure_open(text, action="删除工资凭证")
+    rows = list_payroll(text)
+    if any(_text(row.get("status")) == "已申报" for row in rows):
+        raise ValueError("本期工资已标记「已申报」，不能删除凭证；如需更正请先走申报更正流程。")
+    entries = _find_pay_entries(text)
+    if not entries:
+        raise ValueError("本期没有工资凭证可删除。")
+    entry_nos = {_text(entry.get("entry_no")) for entry in entries if entry.get("entry_no")}
+    line_table = table("journal_lines")
+    for line in line_table.read():
+        if _text(line.get("entry_no")) in entry_nos:
+            line_table.delete(str(line.get("id")))
+    entry_table = table("journal_entries")
+    for entry in entries:
+        for row in entry_table.read():
+            if _text(row.get("entry_no")) == _text(entry.get("entry_no")):
+                entry_table.delete(str(row.get("id")))
+    reset = 0
+    for row in rows:
+        if _text(row.get("status")) == "已确认":
+            table(TABLE_NAME).update(str(row.get("id")), {"status": "草稿", "journal_entry_no": ""})
+            reset += 1
+    log_user_action("删除工资凭证", f"{text}：删除 {len(entries)} 张凭证，退回草稿 {reset} 行")
+    return {"period": text, "deleted": len(entries), "reset": reset}

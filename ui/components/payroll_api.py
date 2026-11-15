@@ -537,6 +537,23 @@ def delete_payroll_row(payroll_id: str) -> bool:
     return bool(module.delete_payroll_row(str(payroll_id)))
 
 
+def period_entries(period: str) -> list[dict]:
+    module = _payroll_module()
+    if module is not None and hasattr(module, "list_payroll_entries"):
+        try:
+            return list(module.list_payroll_entries(period))
+        except Exception:  # noqa: BLE001
+            return []
+    return []
+
+
+def delete_period_entries(period: str) -> dict:
+    module = _require("ledger.payroll", "月度工资表")
+    if not hasattr(module, "delete_payroll_entries"):
+        raise ValueError("月度工资表暂不可用：delete_payroll_entries 未实现。")
+    return module.delete_payroll_entries(period)
+
+
 def fill_from_previous(period: str) -> dict:
     """用上一期工资填充本期空白项；后端缺失时抛中文错误。"""
     module = _require("ledger.payroll", "月度工资表")

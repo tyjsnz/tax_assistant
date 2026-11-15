@@ -184,8 +184,12 @@ def parse_file(data: bytes, filename: str) -> dict[str, Any]:
             if not name or name in {"合计", "总计", "小计"}:
                 continue
             raw_id = _text(row.get(id_col)) if id_col else ""
-            social = sum(_number(row.get(col)) for col in (pension_col, medical_col, unemploy_col) if col)
-            social = social or (_number(row.get(social_total_col)) if social_total_col else 0.0)
+            pension = _number(row.get(pension_col)) if pension_col else 0.0
+            medical = _number(row.get(medical_col)) if medical_col else 0.0
+            unemployment = _number(row.get(unemploy_col)) if unemploy_col else 0.0
+            social = sum((pension, medical, unemployment))
+            if social == 0 and social_total_col:
+                social = _number(row.get(social_total_col))
             records.append({
                 "sheet": sheet_name,
                 "name": name,
@@ -197,6 +201,9 @@ def parse_file(data: bytes, filename: str) -> dict[str, Any]:
                 "status": _text(row.get(status_col)) if status_col else "",
                 "gross_salary": _number(row.get(income_col)) if income_col else 0.0,
                 "social_insurance": round(social, 2),
+                "pension_insurance": round(pension, 2),
+                "medical_insurance": round(medical, 2),
+                "unemployment_insurance": round(unemployment, 2),
                 "housing_fund": _number(row.get(housing_col)) if housing_col else 0.0,
                 "special_deduction": round(sum(_number(row.get(col)) for col in special_cols), 2),
                 "tax_withheld": _number(row.get(tax_col)) if tax_col else 0.0,
@@ -296,6 +303,9 @@ def create_payroll_drafts(rows: list[dict[str, Any]], *, period: str) -> dict[st
                 name,
                 gross_salary=float(row.get("gross_salary") or 0),
                 social_insurance=float(row.get("social_insurance") or 0),
+                pension_insurance=float(row.get("pension_insurance") or 0),
+                medical_insurance=float(row.get("medical_insurance") or 0),
+                unemployment_insurance=float(row.get("unemployment_insurance") or 0),
                 housing_fund=float(row.get("housing_fund") or 0),
                 special_deduction=float(row.get("special_deduction") or 0),
                 tax_withheld=float(row.get("tax_withheld") or 0),

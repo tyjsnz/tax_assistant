@@ -17,6 +17,7 @@ ROOT = ROOT.parent if ROOT.name == "packaging" else ROOT
 datas = [
     (str(ROOT / "knowledge"), "knowledge"),
     (str(ROOT / "examples"), "examples"),
+    (str(ROOT / "templates"), "templates"),
     (str(ROOT / "ui"), "ui"),
 ]
 for optional in (".streamlit",):
