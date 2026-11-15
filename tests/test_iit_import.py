@@ -39,3 +39,44 @@ def test_parse_and_import_employees():
     # 再导一次应按身份证/姓名跳过
     again = iit_import.import_employees(result["rows"], period="2026-03")
     assert len(again["created"]) == 0
+
+
+def _merged_header_xlsx() -> bytes:
+    """模拟扣缴端导出的多行表头 + 脱敏身份证（同尾号多人）。"""
+    import openpyxl
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "个人所得税扣缴申报表"
+    sheet.append(["个人所得税扣缴申报表"])
+    sheet.append(["税款所属期：2026年10月01日至2026年10月31日"])
+    sheet.append([])
+    sheet.append(["序号", "姓名", "身份证件类型", "身份证件号码", "", "", "", "本月（次）情况", "", "", "", "", "", "", ""])
+    sheet.append(["", "", "", "", "", "", "", "收入额计算", "", "", "专项扣除", "", "", "", ""])
+    sheet.append(["", "", "", "", "", "", "", "收入", "费用", "免税收入", "基本养老保险费", "基本医疗保险费", "失业保险费", "住房公积金", "子女教育"])
+    sheet.append([str(i) for i in range(1, 16)])
+    for index, (name, id_card, income, pension) in enumerate(
+        [("甲", "5****************2", 4300, 0), ("乙", "2****************5", 4850, 100), ("丙", "2****************5", 4700, 120)], start=1
+    ):
+        sheet.append([index, name, "居民身份证", id_card, id_card, "否", "正常工资薪金", income, 0, 0, pension, 0, 0, 0, 0])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def test_merged_header_and_masked_id_dedupe():
+    result = iit_import.parse_file(_merged_header_xlsx(), "申报表.xlsx")
+    assert [row["name"] for row in result["rows"]] == ["甲", "乙", "丙"]
+    assert result["rows"][0]["gross_salary"] == 4300
+    assert result["rows"][1]["social_insurance"] == 100
+
+
+def test_create_payroll_drafts_after_import():
+    result = iit_import.parse_file(_xlsx_bytes(), "申报表.xlsx")
+    converted = [{"name": "王五", "id_card": "530101199303033456", "gross_salary": 7000, "social_insurance": 420, "housing_fund": 500, "special_deduction": 0, "tax_withheld": 21}]
+    iit_import.import_employees(converted, period="2026-04")
+    drafts = iit_import.create_payroll_drafts(converted, period="2026-04")
+    assert len(drafts["created"]) == 1
+    assert drafts["created"][0]["gross_salary"] == 7000
+    assert drafts["created"][0]["status"] == "草稿"

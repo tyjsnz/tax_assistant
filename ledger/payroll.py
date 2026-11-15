@@ -680,6 +680,7 @@ __all__ = [
     "get_payroll_row",
     "update_payroll_row",
     "delete_payroll_row",
+    "create_import_draft",
     "cumulative_for_employee",
     "recalc_period",
     "mark_zero_declaration",
@@ -688,3 +689,57 @@ __all__ = [
     "summarize_period",
     "payroll_periods",
 ]
+
+
+def create_import_draft(
+    period: str,
+    employee_id: str,
+    employee_name: str,
+    *,
+    gross_salary: float = 0.0,
+    social_insurance: float = 0.0,
+    housing_fund: float = 0.0,
+    special_deduction: float = 0.0,
+    tax_withheld: float = 0.0,
+    note: str = "从综合所得申报表导入，待核对",
+) -> dict[str, Any]:
+    """从申报表导入生成一条工资表草稿（不自动计算累计数/税额）。
+
+    只写入本期收入与扣除，累计字段置 0，用户在「月度工资表」核对后再重算；
+    同一员工同一期间已有工资记录时拒绝，避免覆盖。
+    """
+    text = normalize_month(period)
+    locks.ensure_open(text, action="导入工资表草稿")
+    employee_id = _text(employee_id)
+    if not employee_id:
+        raise ValueError("员工编号不能为空")
+    if any(_text(row.get("employee_id")) == employee_id for row in _payroll_rows(text)):
+        raise ValueError(f"{employee_name or employee_id} 在 {text} 已有工资记录，请勿重复导入")
+    record = {
+        "period": text,
+        "employee_id": employee_id,
+        "employee_name": _text(employee_name),
+        "gross_salary": round2(gross_salary),
+        "bonus": 0.0,
+        "allowance": 0.0,
+        "social_insurance": round2(social_insurance),
+        "housing_fund": round2(housing_fund),
+        "special_deduction": round2(special_deduction),
+        "other_deduction": 0.0,
+        "cumulative_income": 0.0,
+        "cumulative_basic_deduction": 0.0,
+        "cumulative_social": 0.0,
+        "cumulative_special": 0.0,
+        "cumulative_other": 0.0,
+        "cumulative_taxable": 0.0,
+        "cumulative_tax": 0.0,
+        "tax_withheld": round2(tax_withheld),
+        "net_pay": 0.0,
+        "zero_declaration": False,
+        "status": "草稿",
+        "journal_entry_no": "",
+        "note": _text(note)[:300],
+    }
+    added = table(TABLE_NAME).append(record)
+    log_user_action("导入工资草稿", f"{text} {_text(employee_name)}：应发 {record['gross_salary']:.2f} 元（待核对累计数）")
+    return added

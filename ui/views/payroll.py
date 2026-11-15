@@ -1611,6 +1611,21 @@ def _render_iit_import_tab() -> None:
             st.toast(f"识别到 {len(result['rows'])} 人")
         except Exception as exc:  # noqa: BLE001
             st.error(f"解析失败：{exc}")
+    last_result = st.session_state.pop("_iit_import_result", None)
+    if isinstance(last_result, dict):
+        st.success(
+            f"处理完成：勾选 {last_result.get('count', 0)} 人，创建员工 {len(last_result['employees']['created'])} 人，"
+            f"跳过 {len(last_result['employees']['skipped'])} 人。"
+        )
+        if last_result.get("payroll"):
+            st.info(
+                f"工资草稿：新增 {len(last_result['payroll']['created'])} 条，跳过 {len(last_result['payroll']['skipped'])} 条。"
+                "请到「月度工资表」核对累计数/税额。"
+            )
+        if last_result["employees"]["skipped"]:
+            st.caption("员工跳过：" + "；".join(f"{item['name']}（{item['reason']}）" for item in last_result["employees"]["skipped"][:10]))
+        if last_result["employees"]["errors"]:
+            st.warning("部分人员导入失败：" + "；".join(last_result["employees"]["errors"][:5]))
     preview = st.session_state.get("_iit_import_preview")
     if not isinstance(preview, dict):
         st.info("上传文件后点击「解析并预览人员」。")
@@ -1626,6 +1641,7 @@ def _render_iit_import_tab() -> None:
     )
     frame = pd.DataFrame([
         {
+            "确认": False,
             "姓名": row.get("name"), "身份证号": row.get("id_card_masked") or "—",
             "手机": row.get("phone") or "—", "入职日期": row.get("hire_date") or "—",
             "状态": "离职" if row.get("leave_date") else "在职",
@@ -1635,9 +1651,15 @@ def _render_iit_import_tab() -> None:
         }
         for row in rows
     ])
-    st.dataframe(
-        frame, hide_index=True, alt="综合所得申报表人员预览",
+    edited = st.data_editor(
+        frame,
+        hide_index=True,
+        key="iit_import_confirm_editor",
+        width="stretch",
+        num_rows="fixed",
+        disabled=[column for column in frame.columns if column != "确认"],
         column_config={
+            "确认": st.column_config.CheckboxColumn("确认写入", help="逐人勾选后再导入，默认不写入", width="small"),
             "本期收入": st.column_config.NumberColumn("本期收入", format="¥%.2f"),
             "个人社保": st.column_config.NumberColumn("个人社保", format="¥%.2f"),
             "个人公积金": st.column_config.NumberColumn("个人公积金", format="¥%.2f"),
@@ -1645,15 +1667,30 @@ def _render_iit_import_tab() -> None:
             "本期税额": st.column_config.NumberColumn("本期税额", format="¥%.2f"),
         },
     )
-    st.warning("导入只创建员工档案；工资、社保、专项附加扣除仍需在「月度工资表」核对后再使用。", icon="⚠️")
-    if st.button("✅ 导入员工档案", key="iit_import_save", type="primary", width="stretch"):
-        result = iit_import.import_employees(rows, period=period)
-        st.success(f"已创建 {len(result['created'])} 人；跳过 {len(result['skipped'])} 人。")
-        if result["skipped"]:
-            st.caption("跳过：" + "；".join(f"{item['name']}（{item['reason']}）" for item in result["skipped"][:10]))
-        if result["errors"]:
-            st.warning("部分人员导入失败：" + "；".join(result["errors"][:5]))
+    selected_indexes = [index for index in frame.index if bool(edited.loc[index, "确认"])]
+    selected_rows = [rows[index] for index in selected_indexes]
+    make_payroll = st.checkbox(
+        "同时生成月度工资表草稿（仅本期收入/扣除，累计数待核对）",
+        value=True,
+        key="iit_import_make_payroll",
+    )
+    st.caption(f"已勾选 {len(selected_rows)} 人。未勾选的人员不会写入员工档案，也不会生成工资草稿。")
+    st.warning(
+        "工资草稿只写入本期收入/社保/公积金/专项附加，累计收入和累计税额留空（0），"
+        "请在「月度工资表」核对后再重算，避免申报表汇总数污染工资明细。",
+        icon="⚠️",
+    )
+    if st.button(
+        f"✅ 导入勾选的 {len(selected_rows)} 人", key="iit_import_save", type="primary", width="stretch",
+        disabled=not selected_rows,
+    ):
+        result = iit_import.import_employees(selected_rows, period=period)
+        payroll_result = None
+        if make_payroll:
+            payroll_result = iit_import.create_payroll_drafts(selected_rows, period=period)
+        st.session_state["_iit_import_result"] = {"employees": result, "payroll": payroll_result, "count": len(selected_rows)}
         st.session_state.pop("_iit_import_preview", None)
+        st.rerun()
     st.caption("身份证号只保存脱敏值（前 6 位 + **** + 后 4 位），不会写入日志原文。")
 
 
