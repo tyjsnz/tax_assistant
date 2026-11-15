@@ -1161,8 +1161,7 @@ def _build_iit_return_bundle(period: str) -> None:
     st.session_state[STATE_IIT_BUNDLE] = {"period": period, "bundle": bundle}
     st.session_state.pop(STATE_EXPORT_PATH, None)
     cache.clear()
-    _flash(f"{PA.month_label(period)} 扣缴申报辅助表已生成")
-    st.rerun()
+    st.success(f"{PA.month_label(period)} 扣缴申报辅助表已生成，可在下方查看。")
 
 
 def _export_iit_excel(period: str) -> None:
@@ -1177,7 +1176,7 @@ def _export_iit_excel(period: str) -> None:
         st.error(f"导出 Excel 失败：{exc}")
         return
     st.session_state[STATE_EXPORT_PATH] = str(path)
-    st.rerun()
+    st.success(f"扣缴申报辅助表 Excel 已生成：{path}")
 
 
 def _render_iit_return_tab() -> None:
@@ -1216,14 +1215,29 @@ def _render_iit_return_tab() -> None:
     export_path_raw = st.session_state.get(STATE_EXPORT_PATH)
     if export_path_raw and Path(str(export_path_raw)).exists():
         export_path = Path(str(export_path_raw))
-        st.download_button(
-            "⬇️ 下载扣缴申报辅助表 Excel",
-            data=export_path.read_bytes(),
-            file_name=export_path.name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="payroll_return_download",
-            width="content",
-        )
+        st.caption(f"文件已生成：{export_path}")
+        if config.FROZEN:
+            save_cols = st.columns(2)
+            with save_cols[0]:
+                if st.button("💾 保存辅助表到桌面", key="payroll_return_save_desktop", type="primary", width="stretch"):
+                    try:
+                        target = payroll_template.save_copy_to_desktop(export_path, filename=export_path.name)
+                        st.success(f"已保存到：{target}")
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"保存失败：{exc}")
+            with save_cols[1]:
+                if st.button("📂 打开导出文件夹", key="payroll_return_open_folder", width="stretch"):
+                    _open_file_location(export_path)
+            st.caption("桌面版请用「保存辅助表到桌面」，再到桌面找到 Excel。")
+        else:
+            st.download_button(
+                "⬇️ 下载扣缴申报辅助表 Excel",
+                data=export_path.read_bytes(),
+                file_name=export_path.name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="payroll_return_download",
+                width="content",
+            )
 
     _render_iit_bundle(period)
     if not (st.session_state.get(STATE_IIT_BUNDLE) or {}):
