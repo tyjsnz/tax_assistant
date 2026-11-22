@@ -41,7 +41,7 @@ def _collect(package):
 for package in ("streamlit", "webview"):
     _collect(package)
 
-PACKAGES = ("ui", "agent", "engine", "ledger", "filing", "closing", "archiving", "ingest", "knowledge", "onboarding", "integrations", "guidebooks", "automation", "ocr", "storage")
+PACKAGES = ("ui", "agent", "engine", "ledger", "filing", "closing", "archiving", "ingest", "knowledge", "onboarding", "integrations", "guidebooks", "automation", "ocr", "storage", "drafting")
 
 
 def _modules_from_package(package: str) -> list[str]:

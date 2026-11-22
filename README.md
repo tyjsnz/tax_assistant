@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.54.0-informational)
+![Version](https://img.shields.io/badge/version-1.55.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -42,6 +42,7 @@
 
 | 🚀 新手引导 | 5 步从零配置：公司信息 → 税务基础 → 第一笔账 → 第一次申报 → 完成；含 AI 无需 Key 提示 | 引导页 + 本地进度文件 |
 | 📥 综合所得申报表导入 | 识别扣缴端多行表头/脱敏身份证，逐人确认后建员工档案，可同步生成工资表草稿 | 本地 Excel/CSV 解析，不联网 |
+| 📝 申报草稿中心 | 按月/季检查草稿、数据完整性和待确认事项；可从上月准备工资草稿 | 只准备草稿，不自动申报 |
 | 🗂️ 资料中心 | 导出文件按“公司/年/月/类别”归档，支持按年月检索、索引与取用 | 导出索引 + 历史资料 |
 | 🪪 身份证本地保存 | 员工完整身份证保存在本机账套，工资表显示、扣缴端模板自动带出 | 仅本地，不上传 |
 | 💾 统一导出 | 所有生成/导出的 Excel、PDF、CSV、ICS、Markdown 在桌面版统一保存到桌面，网页版浏览器下载 | 桌面/网页双模式 |
@@ -377,7 +378,7 @@ tax/
 ├── docs/                      # 文档集（索引见 docs/README.md）
 │   ├── README.md              # 文档索引
 │   ├── QUICKSTART.md          # 5 分钟上手
-│   ├── USER_GUIDE.md          # 20 个页面使用指南
+│   ├── USER_GUIDE.md          # 21 个页面使用指南
 │   ├── DEPLOYMENT.md          # 部署/多公司/备份/升级
 │   ├── ARCHITECTURE.md        # 架构与扩展指南
 │   ├── FAQ.md                 # 常见问题
@@ -618,7 +619,7 @@ data/
 
 覆盖范围：算税引擎（免税/专票/超限/边界/四舍五入）、台账 CRUD 与汇总、分录借贷平衡、
 申报表栏次勾稽、导出 Excel、申报进度、意图识别、知识库检索、OCR 字段映射、
-**票据/流水解析与匹配入账（54 项）**、**月结/季结与期间锁、归档/备份恢复**、**个税累计预扣与工资表**、**企业所得税汇算辅助**、**离职多申报纠错**、Streamlit 冒烟（20 页 AppTest）、端到端集成测试。
+**票据/流水解析与匹配入账（54 项）**、**月结/季结与期间锁、归档/备份恢复**、**个税累计预扣与工资表**、**企业所得税汇算辅助**、**离职多申报纠错**、Streamlit 冒烟（21 页 AppTest）、端到端集成测试。
 
 测试自动把数据目录指向临时目录（`tests/conftest.py`），不污染本地台账。
 
@@ -668,4 +669,4 @@ data/
 
 ---
 
-*版本 1.54.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.55.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*

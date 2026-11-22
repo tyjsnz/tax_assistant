@@ -35,6 +35,7 @@ PAGES = [
     "📖 操作指引",
     "🆘 资料找回",
     "🗂️ 资料中心",
+    "📝 申报草稿中心",
     "📚 政策知识库",
     "🤖 AI 助手",
     "⚙️ 设置",
@@ -64,7 +65,7 @@ def _assert_clean(at: AppTest, context: str = "") -> None:
 
 
 def test_app_renders() -> None:
-    """入口脚本可以正常渲染，侧边栏包含全部 20 个页面。"""
+    """入口脚本可以正常渲染，侧边栏包含全部 21 个页面。"""
     at = _new_app()
     _assert_clean(at, "首页")
     labels = [button.label for button in at.button]
@@ -768,3 +769,10 @@ def test_archive_center_page_renders() -> None:
     at = _new_app()
     _goto(at, "🗂️ 资料中心")
     _assert_clean(at, "资料中心")
+
+
+def test_draft_center_page_renders() -> None:
+    at = _new_app()
+    _goto(at, "📝 申报草稿中心")
+    _assert_clean(at, "申报草稿中心")
+    assert any("工资表 / 个税扣缴" in str(item.value) for item in at.markdown)
