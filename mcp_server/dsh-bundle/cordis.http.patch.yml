@@ -1,0 +1,10 @@
+# 备选：先运行 python mcp_server/server.py --http
+# 再让 DSH 通过 Streamable HTTP 连接。
+- insert:
+    - id: zhixiaoshui-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: zhixiaoshui
+        transport: streamable-http
+        url: http://127.0.0.1:8766/mcp
+        failOnStartupError: true

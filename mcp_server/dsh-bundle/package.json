@@ -1,0 +1,8 @@
+{
+  "name": "@local/zhixiaoshui-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "files": ["cordis.patch.yml", "locale/*.json"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

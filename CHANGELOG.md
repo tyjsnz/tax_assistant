@@ -3,6 +3,14 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循语义化版本 `MAJOR.MINOR.PATCH`。
 
+## [v1.56.0] - 2026-11-25
+
+### 新增
+- **MCP Server（只读）**：`mcp_server/`，支持 stdio / 本机 Streamable HTTP；
+- 11 个只读工具：公司信息、期间汇总、申报日历、申报进度、增值税/企业所得税测算、个税汇总、员工脱敏汇总、政策检索、草稿中心、发票列表；
+- 附 DeepSeek Harness 配置 bundle 示例（stdio / HTTP）；
+- 可选依赖 `requirements-mcp.txt`；893 项测试通过；官网/下载包/在线演示更新 v1.56.0。
+
 ## [v1.55.0] - 2026-11-16
 
 ### 新增

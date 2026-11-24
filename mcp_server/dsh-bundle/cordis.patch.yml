@@ -1,0 +1,15 @@
+# DeepSeek Harness 配置示例：stdio 启动本地税小智 MCP Server。
+# 把 /ABSOLUTE/PATH/TO/tax 替换成项目实际目录。
+- insert:
+    - id: zhixiaoshui-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: zhixiaoshui
+        transport: stdio
+        command: /ABSOLUTE/PATH/TO/tax/.venv/bin/python
+        args:
+          - /ABSOLUTE/PATH/TO/tax/mcp_server/server.py
+        cwd: /ABSOLUTE/PATH/TO/tax
+        env:
+          TAX_DATA_DIR: /ABSOLUTE/PATH/TO/tax/data
+        failOnStartupError: true

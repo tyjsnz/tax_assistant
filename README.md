@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.55.0-informational)
+![Version](https://img.shields.io/badge/version-1.56.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -42,6 +42,7 @@
 
 | 🚀 新手引导 | 5 步从零配置：公司信息 → 税务基础 → 第一笔账 → 第一次申报 → 完成；含 AI 无需 Key 提示 | 引导页 + 本地进度文件 |
 | 📥 综合所得申报表导入 | 识别扣缴端多行表头/脱敏身份证，逐人确认后建员工档案，可同步生成工资表草稿 | 本地 Excel/CSV 解析，不联网 |
+| 🔌 MCP Server（可选） | 只读查询账套、日历、申报进度、测算和政策，供 DeepSeek Harness / Claude Desktop 等 MCP 客户端使用 | 只读、不申报 |
 | 📝 申报草稿中心 | 按月/季检查草稿、数据完整性和待确认事项；可从上月准备工资草稿 | 只准备草稿，不自动申报 |
 | 🗂️ 资料中心 | 导出文件按“公司/年/月/类别”归档，支持按年月检索、索引与取用 | 导出索引 + 历史资料 |
 | 🪪 身份证本地保存 | 员工完整身份证保存在本机账套，工资表显示、扣缴端模板自动带出 | 仅本地，不上传 |
@@ -669,4 +670,4 @@ data/
 
 ---
 
-*版本 1.55.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.56.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
