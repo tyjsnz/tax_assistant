@@ -11,7 +11,7 @@
 ![CI](https://img.shields.io/badge/CI-pytest%20offline-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Version](https://img.shields.io/badge/version-1.56.0-informational)
+![Version](https://img.shields.io/badge/version-1.57.0-informational)
 
 🌐 **官网**：[tax.flacn.net](https://tax.flacn.net)（含在线演示与下载）  
 ⌨ **GitHub**：[tyjsnz/tax_assistant](https://github.com/tyjsnz/tax_assistant)  
@@ -379,7 +379,7 @@ tax/
 ├── docs/                      # 文档集（索引见 docs/README.md）
 │   ├── README.md              # 文档索引
 │   ├── QUICKSTART.md          # 5 分钟上手
-│   ├── USER_GUIDE.md          # 21 个页面使用指南
+│   ├── USER_GUIDE.md          # 22 个页面使用指南
 │   ├── DEPLOYMENT.md          # 部署/多公司/备份/升级
 │   ├── ARCHITECTURE.md        # 架构与扩展指南
 │   ├── FAQ.md                 # 常见问题
@@ -620,7 +620,7 @@ data/
 
 覆盖范围：算税引擎（免税/专票/超限/边界/四舍五入）、台账 CRUD 与汇总、分录借贷平衡、
 申报表栏次勾稽、导出 Excel、申报进度、意图识别、知识库检索、OCR 字段映射、
-**票据/流水解析与匹配入账（54 项）**、**月结/季结与期间锁、归档/备份恢复**、**个税累计预扣与工资表**、**企业所得税汇算辅助**、**离职多申报纠错**、Streamlit 冒烟（21 页 AppTest）、端到端集成测试。
+**票据/流水解析与匹配入账（54 项）**、**月结/季结与期间锁、归档/备份恢复**、**个税累计预扣与工资表**、**企业所得税汇算辅助**、**离职多申报纠错**、Streamlit 冒烟（22 页 AppTest）、端到端集成测试。
 
 测试自动把数据目录指向临时目录（`tests/conftest.py`），不污染本地台账。
 
@@ -670,4 +670,4 @@ data/
 
 ---
 
-*版本 1.56.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
+*版本 1.57.0 · 最后更新：2026 年 11 月 · 维护者：snz <274043505@qq.com>*
